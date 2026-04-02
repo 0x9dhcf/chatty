@@ -59,7 +59,7 @@ Then run:
 
 ## Tools
 
-The agent has access to the following tools:
+The agent has only access to the following tools for now:
 
 - **shell** — execute a command and return its output
 - **spawn** — run a process in the background
@@ -68,4 +68,4 @@ The agent has access to the following tools:
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
