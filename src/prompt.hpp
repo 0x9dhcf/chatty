@@ -18,8 +18,8 @@ inline std::optional<std::string> input(const std::string &label) {
   return line;
 }
 
-inline std::optional<size_t> choose(const std::string &title,
-                                    const std::vector<std::string> &items) {
+inline std::optional<size_t> choose(const std::string_view &title,
+                                    const std::vector<std::string_view> &items) {
   if (items.empty())
     return std::nullopt;
 

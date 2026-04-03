@@ -1,5 +1,7 @@
 CompileFlags:
   Add: [-std=c++23]
   CompilationDatabase: build/debug
+Index:
+  Background: Build
 Diagnostics:
   UnusedIncludes: Strict

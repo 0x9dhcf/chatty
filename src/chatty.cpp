@@ -48,14 +48,8 @@ Chatty::Chatty()
   if (providers_.empty())
     throw std::runtime_error("no provider key found");
 
-  // find the smallest entry in the map key list
-  auto it = std::min_element(providers_.begin(), providers_.end(),
-                             [](const auto& a, const auto& b) { return a.first < b.first; });
-
-  // default to first provider first model
-  provider_ = it->first;
-  model_ = it->second.models[0].id;
-  llm_ = std::make_shared<agt::Llm>(provider_, model_, it->second.key);
+  config_ = load_config(providers_);
+  llm_ = std::make_shared<agt::Llm>(config_.provider, config_.model, providers_[config_.provider].key);
 
   auto shell_tool = std::make_shared<Shell>();
   auto spawn_tool = std::make_shared<Spawn>();
@@ -73,9 +67,9 @@ Chatty::Chatty()
 }
 
 void Chatty::run() noexcept {
-  while (auto line =
-             prompt::input(std::format("[{} - {}{}] ", agt::provider_to_string(provider_), model_,
-                                       thinking_effort_.empty() ? "" : " - " + thinking_effort_))) {
+  while (auto line = prompt::input(std::format("[{} - {}{}] ",
+             agt::provider_to_string(config_.provider), config_.model,
+             config_.thinking_effort.empty() ? "" : " - " + config_.thinking_effort))) {
     if (line->empty())
       continue;
     if (line->starts_with('/'))
@@ -87,7 +81,7 @@ void Chatty::run() noexcept {
 
 void Chatty::handle_message(const std::string& input) {
   try {
-    agt::RunnerOptions opts = {.max_turns = 10, .thinking_effort = thinking_effort_};
+    agt::RunnerOptions opts = {.max_turns = 10, .thinking_effort = config_.thinking_effort};
     auto r = runner_.run(*llm_, agent_, input, opts);
     std::println(stdout, "{}", r.content);
   } catch (const agt::LlmError& e) {
@@ -112,7 +106,7 @@ void Chatty::handle_command(const std::string& input) {
 void Chatty::command_provider(const std::vector<std::string>& args) {
   if (args.size() < 2) {
     // Build list of available providers
-    std::vector<std::string> names;
+    std::vector<std::string_view> names;
     std::vector<agt::Provider> providers;
     for (auto& [p, cfg] : providers_) {
       names.push_back(agt::provider_to_string(p));
@@ -124,20 +118,22 @@ void Chatty::command_provider(const std::vector<std::string>& args) {
       return;
 
     auto p = providers[*choice];
-    if (p != provider_) {
-      provider_ = p;
-      model_ = providers_[p].models[0].id;
-      *llm_ = agt::Llm(provider_, model_, providers_[p].key);
+    if (p != config_.provider) {
+      config_.provider = p;
+      config_.model = providers_[p].models[0].id;
+      *llm_ = agt::Llm(config_.provider, config_.model, providers_[p].key);
+      save_config(config_);
     }
     return;
   }
 
   try {
     auto p = agt::provider_from_string(args[1]);
-    if (p != provider_) {
-      provider_ = p;
-      model_ = providers_[p].models[0].id;
-      *llm_ = agt::Llm(provider_, model_, providers_[p].key);
+    if (p != config_.provider) {
+      config_.provider = p;
+      config_.model = providers_[p].models[0].id;
+      *llm_ = agt::Llm(config_.provider, config_.model, providers_[p].key);
+      save_config(config_);
     }
   } catch (const std::exception& e) {
     std::println("{}", e.what());
@@ -145,50 +141,52 @@ void Chatty::command_provider(const std::vector<std::string>& args) {
 }
 
 void Chatty::command_model(const std::vector<std::string>& args) {
-  auto& models = providers_[provider_].models;
+  auto& models = providers_[config_.provider].models;
 
   if (args.size() < 2) {
-    std::vector<std::string> names;
+    std::vector<std::string_view> names;
     for (auto& m : models)
       names.push_back(m.id);
     auto choice = prompt::choose("Select model:", names);
     if (!choice)
       return;
-    model_ = models[*choice].id;
+    config_.model = models[*choice].id;
   } else {
     auto it = std::ranges::find(models, args[1], &agt::ModelInfo::id);
     if (it == models.end()) {
       std::println("model '{}' not available", args[1]);
       return;
     }
-    model_ = it->id;
+    config_.model = it->id;
   }
-  *llm_ = agt::Llm(provider_, model_, providers_[provider_].key);
+  *llm_ = agt::Llm(config_.provider, config_.model, providers_[config_.provider].key);
+  save_config(config_);
 }
 
 void Chatty::command_thinking(const std::vector<std::string>& args) {
-  static const std::vector<std::string> levels = {"none", "low", "medium", "high"};
+  static const std::vector<std::string_view> levels = {"none", "low", "medium", "high"};
 
   if (args.size() < 2) {
     auto choice = prompt::choose("Thinking effort:", levels);
     if (!choice)
       return;
-    thinking_effort_ = levels[*choice];
+    config_.thinking_effort = levels[*choice];
   } else {
     if (std::ranges::find(levels, args[1]) == levels.end()) {
       std::println("invalid effort '{}' (none|low|medium|high)", args[1]);
       return;
     }
-    thinking_effort_ = args[1];
+    config_.thinking_effort = args[1];
   }
-  std::println("thinking effort: {}", thinking_effort_);
+  save_config(config_);
+  std::println("thinking effort: {}", config_.thinking_effort);
 }
 
 void Chatty::command_env(const std::vector<std::string>&) {
   for (auto& [p, cfg] : providers_) {
     std::println("{}:", agt::provider_to_string(p));
     for (auto& m : cfg.models)
-      std::println("  {}{}", m.id, (p == provider_ && m.id == model_) ? " *" : "");
+      std::println("  {}{}", m.id, (p == config_.provider && m.id == config_.model) ? " *" : "");
   }
 }
 

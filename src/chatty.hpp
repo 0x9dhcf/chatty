@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.hpp"
 #include <agt/agent.hpp>
 #include <agt/llm.hpp>
 #include <agt/runner.hpp>
@@ -31,9 +32,7 @@ private:
 
   std::unordered_map<std::string, command> commands_;
   std::unordered_map<agt::Provider, agt::ProviderConfig> providers_;
-  agt::Provider provider_;
-  std::string model_;
-  std::string thinking_effort_ = "low";
+  ChattyConfig config_;
   std::shared_ptr<agt::Llm> llm_;
   agt::Runner runner_;
   agt::Agent agent_;
