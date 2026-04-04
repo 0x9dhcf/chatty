@@ -9,7 +9,9 @@
 class Shell : public agt::Tool {
   const char *name() const noexcept override { return "shell"; }
   const char *description() const noexcept override {
-    return "Execute a command in a shell and return the output";
+    return "Execute a command in a shell and return its output. "
+           "Only for commands that produce text output and exit quickly. "
+           "Do NOT use for GUI applications or long-running processes — use spawn instead.";
   }
 
   agt::Json parameters() const override {

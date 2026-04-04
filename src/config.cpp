@@ -44,6 +44,13 @@
   return *home / ".chatty.cfg";
 }
 
+std::filesystem::path history_path() {
+  const auto home = home_dir();
+  if (!home)
+    throw std::runtime_error("Cannot determine home directory");
+  return *home / ".chatty_history";
+}
+
 [[nodiscard]] static std::pair<std::string, std::string>
 parse_line(std::string_view line) noexcept {
   // Strip comments and blank lines — caller must pre-filter

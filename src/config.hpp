@@ -1,6 +1,7 @@
 #pragma once
 
 #include "agt/llm.hpp"
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 
@@ -12,3 +13,4 @@ struct ChattyConfig {
 
 ChattyConfig load_config(const std::unordered_map<agt::Provider, agt::ProviderConfig>& providers);
 void save_config(const ChattyConfig& cfg);
+std::filesystem::path history_path();
