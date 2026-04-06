@@ -20,6 +20,11 @@ CPMAddPackage(
   URL https://github.com/0x9dhcf/promptty/archive/refs/heads/main.tar.gz
 )
 
+CPMAddPackage(
+  NAME mdtty
+  URL https://github.com/0x9dhcf/mdtty/archive/refs/heads/main.tar.gz
+)
+
 # --- Sources ---
 file(GLOB CHATTY_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
@@ -50,7 +55,7 @@ target_include_directories(chatty
 target_compile_options(chatty PRIVATE ${CHATTY_WARNINGS})
 
 target_link_libraries(chatty
-  PRIVATE agt::agt promptty::promptty
+  PRIVATE agt::agt promptty::promptty mdtty::mdtty
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

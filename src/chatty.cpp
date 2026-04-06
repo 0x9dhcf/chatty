@@ -4,6 +4,7 @@
 #include <agt/llm.hpp>
 #include <agt/runner.hpp>
 #include <agt/session.hpp>
+#include <mdtty/mdtty.hpp>
 #include <algorithm>
 #include <cstdlib>
 #include <print>
@@ -70,10 +71,15 @@ Chatty::Chatty()
 }
 
 std::string Chatty::make_prompt() const {
-  return std::format("\x1b[36m{}\x1b[0m \x1b[33m{}\x1b[0m{} \x1b[35m>\x1b[0m ",
-      agt::provider_to_string(config_.provider), config_.model,
-      config_.thinking_effort.empty() ? "" :
-          std::format(" \x1b[32m{}\x1b[0m", config_.thinking_effort));
+  // provider \x1b[2m·\x1b[0m model [\x1b[2m·\x1b[0m thinking] \x1b[1m❯\x1b[0m
+  std::string p;
+  p += std::format("\x1b[36m{}\x1b[0m", agt::provider_to_string(config_.provider));
+  p += std::format(" \x1b[2m\xc2\xb7\x1b[0m ");  // dim ·
+  p += std::format("\x1b[33m{}\x1b[0m", config_.model);
+  if (!config_.thinking_effort.empty())
+    p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[32m{}\x1b[0m", config_.thinking_effort);
+  p += std::format(" \x1b[1;35m\xe2\x9d\xaf\x1b[0m ");  // bold magenta ❯
+  return p;
 }
 
 void Chatty::reset_editor() {
@@ -107,10 +113,15 @@ void Chatty::run() noexcept {
 
 void Chatty::handle_message(const std::string& input) {
   try {
+    mdtty::Renderer md(
+        [](std::string_view s) { std::print(stdout, "{}", s); std::fflush(stdout); });
+
     agt::RunnerOptions opts = {.max_turns = 10, .context = &*editor_,
                                .thinking_effort = config_.thinking_effort};
-    auto r = runner_.run(*llm_, agent_, input, opts);
-    std::println(stdout, "{}", r.content);
+    agt::RunnerHooks hooks = {.on_token = [&md](const std::string& tok) { md.feed(tok); }};
+
+    runner_.run(*llm_, agent_, input, opts, hooks);
+    md.flush();
   } catch (const agt::LlmError& e) {
     std::println(stderr, "{}", e.what());
   }
