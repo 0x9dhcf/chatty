@@ -33,10 +33,16 @@ std::filesystem::path config_dir() {
   if (!home)
     throw std::runtime_error("Cannot determine home directory");
 #ifdef _WIN32
-  return *home / "AppData" / "Roaming" / "chatty";
+  auto path = *home / "AppData" / "Roaming" / "chatty";
 #else
-  return *home / ".config" / "chatty";
+  auto path = *home / ".config" / "chatty";
 #endif
+
+  if (!std::filesystem::exists(path.parent_path())) {
+    std::filesystem::create_directories(path.parent_path());
+  }
+
+  return path;
 }
 
 std::filesystem::path data_dir() {
@@ -44,32 +50,24 @@ std::filesystem::path data_dir() {
   if (!home)
     throw std::runtime_error("Cannot determine home directory");
 #ifdef _WIN32
-  return *home / "AppData" / "Local" / "chatty";
+  auto path = return *home / "AppData" / "Local" / "chatty";
 #else
-  return *home / ".local" / "share" / "chatty";
+  auto path = *home / ".local" / "state" / "chatty";
 #endif
-}
 
-std::filesystem::path history_path() {
-  auto path = config_dir() / "history";
-
-  // Migrate old history file
-  if (!std::filesystem::exists(path)) {
-    auto home = home_dir();
-    if (home) {
-      auto old_hist = *home / ".chatty_history";
-      if (std::filesystem::exists(old_hist)) {
-        std::filesystem::create_directories(path.parent_path());
-        std::filesystem::rename(old_hist, path);
-      }
-    }
+  if (!std::filesystem::exists(path.parent_path())) {
+    std::filesystem::create_directories(path.parent_path());
   }
 
   return path;
 }
 
-ChattyConfig default_config(
-    const std::unordered_map<agt::Provider, agt::ProviderConfig>& providers) {
+std::filesystem::path history_path() {
+  return data_dir() / "history";
+}
+
+ChattyConfig
+default_config(const std::unordered_map<agt::Provider, agt::ProviderConfig>& providers) {
   auto it = std::min_element(providers.begin(), providers.end(),
                              [](const auto& a, const auto& b) { return a.first < b.first; });
   return {it->first, it->second.models[0].id, "low"};

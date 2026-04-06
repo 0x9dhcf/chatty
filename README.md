@@ -70,7 +70,7 @@ Then run:
 
 Conversation history is persisted automatically. A session is created and named from your first message. Each session stores its own provider, model, and thinking effort settings.
 
-Sessions are stored as SQLite databases under `~/.local/share/chatty/sessions/`. Line editor history is kept in `~/.config/chatty/history`.
+Sessions are stored as SQLite databases under `~/.local/state/chatty/sessions/`. Line editor history is kept in `~/.local/state/chatty/history`.
 
 ## Tools
 
