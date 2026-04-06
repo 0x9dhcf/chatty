@@ -6,6 +6,10 @@
 
 A terminal assistant powered by LLMs. Supports multiple providers (OpenAI, Anthropic, Gemini, Mistral) with tool use for shell commands, file I/O, and background processes.
 
+- Persistent named sessions with per-session configuration (provider, model, thinking effort)
+- Markdown rendering in terminal via [mdtty](https://github.com/0x9dhcf/mdtty)
+- Interactive line editing with history and tab completion via [promptty](https://github.com/0x9dhcf/promptty)
+
 Built on [agt](https://github.com/0x9dhcf/agt).
 
 ## Build
@@ -55,17 +59,25 @@ Then run:
 | `/model [name]`      | Switch model                                 |
 | `/thinking [level]`  | Set thinking effort (none/low/medium/high)   |
 | `/environment`       | Show available providers and models           |
+| `/new`               | Start a new session                           |
+| `/resume`            | Resume a saved session                        |
+| `/delete`            | Delete current session and start new          |
 | `/help`              | Show available commands                       |
 | `Ctrl-D`             | Quit                                          |
 
+## Sessions
+
+Conversation history is persisted automatically. A session is created and named from your first message. Each session stores its own provider, model, and thinking effort settings.
+
+Sessions are stored as SQLite databases under `~/.local/share/chatty/sessions/`. Line editor history is kept in `~/.config/chatty/history`.
+
 ## Tools
 
-The agent has only access to the following tools for now:
-
-- **shell** — execute a command and return its output
-- **spawn** — run a process in the background
-- **file_read** — read file contents (supports partial reads)
-- **file_write** — write to a file (supports partial writes)
+- **shell**: execute a command and return its output
+- **spawn**: run a process in the background
+- **file_read**: read file contents (supports partial reads)
+- **file_write**: write to a file (supports partial writes)
+- **ask**: present interactive choices to the user
 
 ## License
 
