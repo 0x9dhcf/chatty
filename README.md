@@ -2,6 +2,7 @@
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)
 ![build](https://github.com/0x9dhcf/chatty/actions/workflows/ci.yml/badge.svg)
+![platform](https://img.shields.io/badge/platform-Linux-informational.svg?logo=linux&logoColor=white)
 ![license](https://img.shields.io/badge/license-MIT-green.svg)
 
 A terminal assistant powered by LLMs. Supports multiple providers (OpenAI, Anthropic, Gemini, Mistral) with tool use for shell commands, file I/O, and background processes.
