@@ -54,8 +54,10 @@ target_include_directories(chatty
 
 target_compile_options(chatty PRIVATE ${CHATTY_WARNINGS})
 
+find_package(SQLite3 REQUIRED)
+
 target_link_libraries(chatty
-  PRIVATE agt::agt promptty::promptty mdtty::mdtty
+  PRIVATE agt::agt promptty::promptty mdtty::mdtty SQLite::SQLite3
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

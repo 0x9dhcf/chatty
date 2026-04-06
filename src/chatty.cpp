@@ -43,6 +43,9 @@ Chatty::Chatty()
           {"/model", [this](const std::vector<std::string>& s) { command_model(s); }},
           {"/environment", [this](const std::vector<std::string>& s) { command_env(s); }},
           {"/thinking", [this](const std::vector<std::string>& s) { command_thinking(s); }},
+          {"/new", [this](const std::vector<std::string>& s) { command_new(s); }},
+          {"/resume", [this](const std::vector<std::string>& s) { command_resume(s); }},
+          {"/delete", [this](const std::vector<std::string>& s) { command_delete(s); }},
           {"/help", [this](const std::vector<std::string>& s) { command_help(s); }},
       } {
 
@@ -50,7 +53,7 @@ Chatty::Chatty()
   if (providers_.empty())
     throw std::runtime_error("no provider key found");
 
-  config_ = load_config(providers_);
+  config_ = default_config(providers_);
   llm_ = std::make_shared<agt::Llm>(config_.provider, config_.model, providers_[config_.provider].key);
   reset_editor();
 
@@ -122,6 +125,31 @@ void Chatty::handle_message(const std::string& input) {
 
     runner_.run(*llm_, agent_, input, opts, hooks);
     md.flush();
+
+    if (!session_persisted_) {
+      // Truncate input to ~80 chars at word boundary for the session name
+      std::string name = input;
+      if (name.size() > 80) {
+        name.resize(80);
+        auto pos = name.find_last_of(' ');
+        if (pos != std::string::npos)
+          name.resize(pos);
+      }
+
+      auto info = session_mgr_.create(name, config_);
+      current_session_uuid_ = info.uuid;
+
+      // Copy messages from memory session to persistent session
+      auto sqlite_session = session_mgr_.open(info.uuid);
+      auto msgs = agent_.session->messages();
+      if (!msgs.empty())
+        sqlite_session->append(msgs);
+
+      agent_.session = sqlite_session;
+      session_persisted_ = true;
+    } else {
+      session_mgr_.touch(current_session_uuid_);
+    }
   } catch (const agt::LlmError& e) {
     std::println(stderr, "{}", e.what());
   }
@@ -159,7 +187,7 @@ void Chatty::command_provider(const std::vector<std::string>& args) {
       config_.provider = p;
       config_.model = providers_[p].models[0].id;
       *llm_ = agt::Llm(config_.provider, config_.model, providers_[p].key);
-      save_config(config_);
+      save_session_config();
       reset_editor();
     }
     return;
@@ -171,7 +199,7 @@ void Chatty::command_provider(const std::vector<std::string>& args) {
       config_.provider = p;
       config_.model = providers_[p].models[0].id;
       *llm_ = agt::Llm(config_.provider, config_.model, providers_[p].key);
-      save_config(config_);
+      save_session_config();
       reset_editor();
     }
   } catch (const std::exception& e) {
@@ -199,7 +227,7 @@ void Chatty::command_model(const std::vector<std::string>& args) {
     config_.model = it->id;
   }
   *llm_ = agt::Llm(config_.provider, config_.model, providers_[config_.provider].key);
-  save_config(config_);
+  save_session_config();
   reset_editor();
 }
 
@@ -218,8 +246,66 @@ void Chatty::command_thinking(const std::vector<std::string>& args) {
     }
     config_.thinking_effort = args[1];
   }
-  save_config(config_);
+  save_session_config();
   reset_editor();
+}
+
+void Chatty::save_session_config() {
+  if (session_persisted_)
+    session_mgr_.update_config(current_session_uuid_, config_);
+}
+
+void Chatty::start_new_session() {
+  agent_.session = std::make_shared<agt::MemorySession>();
+  current_session_uuid_.clear();
+  session_persisted_ = false;
+}
+
+void Chatty::command_new(const std::vector<std::string>&) {
+  start_new_session();
+  std::println("new session started");
+}
+
+void Chatty::command_resume(const std::vector<std::string>&) {
+  auto sessions = session_mgr_.list();
+  if (sessions.empty()) {
+    std::println("no saved sessions");
+    return;
+  }
+
+  std::vector<std::string> names;
+  for (auto& s : sessions)
+    names.push_back(std::format("{} ({})", s.name, s.updated_at));
+
+  auto choice = editor_->choose(names);
+  if (!choice)
+    return;
+
+  auto& info = sessions[choice->index];
+  agent_.session = session_mgr_.open(info.uuid);
+  current_session_uuid_ = info.uuid;
+  session_persisted_ = true;
+
+  // Restore per-session config
+  if (!info.provider.empty() && providers_.contains(agt::provider_from_string(info.provider))) {
+    config_.provider = agt::provider_from_string(info.provider);
+    config_.model = info.model;
+    config_.thinking_effort = info.thinking_effort;
+    *llm_ = agt::Llm(config_.provider, config_.model, providers_[config_.provider].key);
+    reset_editor();
+  }
+
+  std::println("resumed: {}", info.name);
+}
+
+void Chatty::command_delete(const std::vector<std::string>&) {
+  if (!session_persisted_) {
+    std::println("current session is not saved");
+    return;
+  }
+  session_mgr_.remove(current_session_uuid_);
+  start_new_session();
+  std::println("session deleted, new session started");
 }
 
 void Chatty::command_env(const std::vector<std::string>&) {
@@ -235,6 +321,9 @@ void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/model [name]       — switch model");
   std::println("/thinking [level]   — set thinking effort (none|low|medium|high)");
   std::println("/environment        — show available providers and models");
+  std::println("/new                — start a new session");
+  std::println("/resume             — resume a saved session");
+  std::println("/delete             — delete current session and start new");
   std::println("/help               — show this help");
   std::println("Ctrl-D              — quit");
 }

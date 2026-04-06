@@ -11,6 +11,7 @@ struct ChattyConfig {
   std::string thinking_effort;
 };
 
-ChattyConfig load_config(const std::unordered_map<agt::Provider, agt::ProviderConfig>& providers);
-void save_config(const ChattyConfig& cfg);
+ChattyConfig default_config(const std::unordered_map<agt::Provider, agt::ProviderConfig>& providers);
+std::filesystem::path config_dir();
+std::filesystem::path data_dir();
 std::filesystem::path history_path();

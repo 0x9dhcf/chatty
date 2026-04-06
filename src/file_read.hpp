@@ -24,6 +24,8 @@ class FileRead : public agt::Tool {
   agt::Json execute(const agt::Json &input, void *context = nullptr) override {
     (void)context;
     std::filesystem::path p = expand_path(input["path"].get<std::string>());
+    if (std::filesystem::is_directory(p))
+      return "error: path is a directory, not a file";
     std::ifstream in(p, std::ios::binary);
     if (!in)
       return "error: can't open file for read";

@@ -22,6 +22,8 @@ class FileWrite : public agt::Tool {
   agt::Json execute(const agt::Json &input, void *context = nullptr) override {
     (void)context;
     std::filesystem::path p = expand_path(input["path"].get<std::string>());
+    if (std::filesystem::is_directory(p))
+      return "error: path is a directory, not a file";
     auto mode = std::ios::binary;
 
     if (input.contains("pos")) {
