@@ -1,19 +1,20 @@
 #include "chatty.hpp"
-#include "env.hpp"
+#include "environment.hpp"
+#include "paths.hpp"
 #include "tools.hpp"
 #include <agt/llm.hpp>
 #include <agt/runner.hpp>
 #include <agt/session.hpp>
-#include <mdtty/mdtty.hpp>
 #include <algorithm>
 #include <cstdlib>
+#include <mdtty/mdtty.hpp>
 #include <print>
 #include <sstream>
 #include <string>
 #include <vector>
 
 static std::string build_instructions() {
-  auto e = Env();
+  auto e = Environment();
   std::ostringstream p;
 
   p << "You are a helpful terminal assistant. Keep responses concise and\n"
@@ -43,6 +44,7 @@ Chatty::Chatty()
           {"/model", [this](const std::vector<std::string>& s) { command_model(s); }},
           {"/environment", [this](const std::vector<std::string>& s) { command_env(s); }},
           {"/thinking", [this](const std::vector<std::string>& s) { command_thinking(s); }},
+          {"/default", [this](const std::vector<std::string>& s) { command_default(s); }},
           {"/new", [this](const std::vector<std::string>& s) { command_new(s); }},
           {"/resume", [this](const std::vector<std::string>& s) { command_resume(s); }},
           {"/delete", [this](const std::vector<std::string>& s) { command_delete(s); }},
@@ -53,8 +55,9 @@ Chatty::Chatty()
   if (providers_.empty())
     throw std::runtime_error("no provider key found");
 
-  config_ = default_config(providers_);
-  llm_ = std::make_shared<agt::Llm>(config_.provider, config_.model, providers_[config_.provider].key);
+  settings_ = load_settings(providers_);
+  llm_ =
+      std::make_shared<agt::Llm>(settings_.provider, settings_.model, providers_[settings_.provider].key);
   reset_editor();
 
   auto shell_tool = std::make_shared<Shell>();
@@ -76,11 +79,11 @@ Chatty::Chatty()
 std::string Chatty::make_prompt() const {
   // provider \x1b[2m·\x1b[0m model [\x1b[2m·\x1b[0m thinking] \x1b[1m❯\x1b[0m
   std::string p;
-  p += std::format("\x1b[36m{}\x1b[0m", agt::provider_to_string(config_.provider));
+  p += std::format("\x1b[36m{}\x1b[0m", agt::provider_to_string(settings_.provider));
   p += std::format(" \x1b[2m\xc2\xb7\x1b[0m ");  // dim ·
-  p += std::format("\x1b[33m{}\x1b[0m", config_.model);
-  if (!config_.thinking_effort.empty())
-    p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[32m{}\x1b[0m", config_.thinking_effort);
+  p += std::format("\x1b[33m{}\x1b[0m", settings_.model);
+  if (!settings_.thinking_effort.empty())
+    p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[32m{}\x1b[0m", settings_.thinking_effort);
   p += std::format(" \x1b[1;35m\xe2\x9d\xaf\x1b[0m ");  // bold magenta ❯
   return p;
 }
@@ -120,7 +123,7 @@ void Chatty::handle_message(const std::string& input) {
         [](std::string_view s) { std::print(stdout, "{}", s); std::fflush(stdout); });
 
     agt::RunnerOptions opts = {.max_turns = 10, .context = &*editor_,
-                               .thinking_effort = config_.thinking_effort};
+                               .thinking_effort = settings_.thinking_effort};
     agt::RunnerHooks hooks = {.on_token = [&md](const std::string& tok) { md.feed(tok); }};
 
     runner_.run(*llm_, agent_, input, opts, hooks);
@@ -136,7 +139,7 @@ void Chatty::handle_message(const std::string& input) {
           name.resize(pos);
       }
 
-      auto info = session_mgr_.create(name, config_);
+      auto info = session_mgr_.create(name, settings_);
       current_session_uuid_ = info.uuid;
 
       // Copy messages from memory session to persistent session
@@ -183,10 +186,10 @@ void Chatty::command_provider(const std::vector<std::string>& args) {
       return;
 
     auto p = providers[choice->index];
-    if (p != config_.provider) {
-      config_.provider = p;
-      config_.model = providers_[p].models[0].id;
-      *llm_ = agt::Llm(config_.provider, config_.model, providers_[p].key);
+    if (p != settings_.provider) {
+      settings_.provider = p;
+      settings_.model = providers_[p].models[0].id;
+      *llm_ = agt::Llm(settings_.provider, settings_.model, providers_[p].key);
       save_session_config();
       reset_editor();
     }
@@ -195,10 +198,10 @@ void Chatty::command_provider(const std::vector<std::string>& args) {
 
   try {
     auto p = agt::provider_from_string(args[1]);
-    if (p != config_.provider) {
-      config_.provider = p;
-      config_.model = providers_[p].models[0].id;
-      *llm_ = agt::Llm(config_.provider, config_.model, providers_[p].key);
+    if (p != settings_.provider) {
+      settings_.provider = p;
+      settings_.model = providers_[p].models[0].id;
+      *llm_ = agt::Llm(settings_.provider, settings_.model, providers_[p].key);
       save_session_config();
       reset_editor();
     }
@@ -208,7 +211,7 @@ void Chatty::command_provider(const std::vector<std::string>& args) {
 }
 
 void Chatty::command_model(const std::vector<std::string>& args) {
-  auto& models = providers_[config_.provider].models;
+  auto& models = providers_[settings_.provider].models;
 
   if (args.size() < 2) {
     std::vector<std::string> names;
@@ -217,16 +220,16 @@ void Chatty::command_model(const std::vector<std::string>& args) {
     auto choice = editor_->choose(names);
     if (!choice)
       return;
-    config_.model = models[choice->index].id;
+    settings_.model = models[choice->index].id;
   } else {
     auto it = std::ranges::find(models, args[1], &agt::ModelInfo::id);
     if (it == models.end()) {
       std::println("model '{}' not available", args[1]);
       return;
     }
-    config_.model = it->id;
+    settings_.model = it->id;
   }
-  *llm_ = agt::Llm(config_.provider, config_.model, providers_[config_.provider].key);
+  *llm_ = agt::Llm(settings_.provider, settings_.model, providers_[settings_.provider].key);
   save_session_config();
   reset_editor();
 }
@@ -238,21 +241,57 @@ void Chatty::command_thinking(const std::vector<std::string>& args) {
     auto choice = editor_->choose(levels);
     if (!choice)
       return;
-    config_.thinking_effort = levels[choice->index];
+    settings_.thinking_effort = levels[choice->index];
   } else {
     if (std::ranges::find(levels, args[1]) == levels.end()) {
       std::println("invalid effort '{}' (none|low|medium|high)", args[1]);
       return;
     }
-    config_.thinking_effort = args[1];
+    settings_.thinking_effort = args[1];
   }
   save_session_config();
   reset_editor();
 }
 
+void Chatty::command_default(const std::vector<std::string>&) {
+  std::vector<std::string> provider_names;
+  std::vector<agt::Provider> providers;
+  for (auto& [p, cfg] : providers_) {
+    provider_names.push_back(std::string(agt::provider_to_string(p)));
+    providers.push_back(p);
+  }
+  auto provider_choice = editor_->choose(provider_names, "default provider:");
+  if (!provider_choice)
+    return;
+  auto provider = providers[provider_choice->index];
+
+  auto& models = providers_[provider].models;
+  std::vector<std::string> model_names;
+  for (auto& m : models)
+    model_names.push_back(m.id);
+  auto model_choice = editor_->choose(model_names, "default model:");
+  if (!model_choice)
+    return;
+  auto model = models[model_choice->index].id;
+
+  static const std::vector<std::string> levels = {"low", "medium", "high"};
+  auto thinking_choice = editor_->choose(levels, "default thinking effort:");
+  if (!thinking_choice)
+    return;
+
+  ChattySettings defaults{provider, model, levels[thinking_choice->index], settings_.enabled_briefs};
+  try {
+    save_settings(defaults);
+    std::println("defaults saved: {} / {} / {}", agt::provider_to_string(defaults.provider),
+                 defaults.model, defaults.thinking_effort);
+  } catch (const std::exception& e) {
+    std::println("failed to save defaults: {}", e.what());
+  }
+}
+
 void Chatty::save_session_config() {
   if (session_persisted_)
-    session_mgr_.update_config(current_session_uuid_, config_);
+    session_mgr_.update_config(current_session_uuid_, settings_);
 }
 
 void Chatty::start_new_session() {
@@ -288,10 +327,10 @@ void Chatty::command_resume(const std::vector<std::string>&) {
 
   // Restore per-session config
   if (!info.provider.empty() && providers_.contains(agt::provider_from_string(info.provider))) {
-    config_.provider = agt::provider_from_string(info.provider);
-    config_.model = info.model;
-    config_.thinking_effort = info.thinking_effort;
-    *llm_ = agt::Llm(config_.provider, config_.model, providers_[config_.provider].key);
+    settings_.provider = agt::provider_from_string(info.provider);
+    settings_.model = info.model;
+    settings_.thinking_effort = info.thinking_effort;
+    *llm_ = agt::Llm(settings_.provider, settings_.model, providers_[settings_.provider].key);
     reset_editor();
   }
 
@@ -312,7 +351,7 @@ void Chatty::command_env(const std::vector<std::string>&) {
   for (auto& [p, cfg] : providers_) {
     std::println("{}:", agt::provider_to_string(p));
     for (auto& m : cfg.models)
-      std::println("  {}{}", m.id, (p == config_.provider && m.id == config_.model) ? " *" : "");
+      std::println("  {}{}", m.id, (p == settings_.provider && m.id == settings_.model) ? " *" : "");
   }
 }
 
@@ -320,6 +359,7 @@ void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/provider [name]    — switch LLM provider");
   std::println("/model [name]       — switch model");
   std::println("/thinking [level]   — set thinking effort (none|low|medium|high)");
+  std::println("/default            — save current provider/model/thinking as defaults");
   std::println("/environment        — show available providers and models");
   std::println("/new                — start a new session");
   std::println("/resume             — resume a saved session");

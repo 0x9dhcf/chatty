@@ -25,6 +25,12 @@ CPMAddPackage(
   URL https://github.com/0x9dhcf/mdtty/archive/refs/heads/main.tar.gz
 )
 
+CPMAddPackage(
+  NAME tomlplusplus
+  GITHUB_REPOSITORY marzer/tomlplusplus
+  VERSION 3.4.0
+)
+
 # --- Sources ---
 file(GLOB CHATTY_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
@@ -57,7 +63,7 @@ target_compile_options(chatty PRIVATE ${CHATTY_WARNINGS})
 find_package(SQLite3 REQUIRED)
 
 target_link_libraries(chatty
-  PRIVATE agt::agt promptty::promptty mdtty::mdtty SQLite::SQLite3
+  PRIVATE agt::agt promptty::promptty mdtty::mdtty tomlplusplus::tomlplusplus SQLite::SQLite3
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

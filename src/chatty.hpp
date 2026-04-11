@@ -1,6 +1,6 @@
 #pragma once
 
-#include "config.hpp"
+#include "settings.hpp"
 #include "session_manager.hpp"
 #include <agt/agent.hpp>
 #include <agt/llm.hpp>
@@ -30,6 +30,7 @@ private:
   void command_model(const std::vector<std::string> &args);
   void command_env(const std::vector<std::string> &args);
   void command_thinking(const std::vector<std::string> &args);
+  void command_default(const std::vector<std::string> &args);
   void command_new(const std::vector<std::string> &args);
   void command_resume(const std::vector<std::string> &args);
   void command_delete(const std::vector<std::string> &args);
@@ -42,7 +43,7 @@ private:
 
   std::unordered_map<std::string, command> commands_;
   std::unordered_map<agt::Provider, agt::ProviderConfig> providers_;
-  ChattyConfig config_;
+  ChattySettings settings_;
   SessionManager session_mgr_;
   std::string current_session_uuid_;
   bool session_persisted_ = false;

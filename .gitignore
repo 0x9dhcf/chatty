@@ -5,3 +5,10 @@ compile_commands.json
 *.a
 *.so
 *.d
+CMakeUserPresets.json
+.claude/
+.DS_Store
+*.swp
+*.swo
+core
+core.*
