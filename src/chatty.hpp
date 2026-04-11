@@ -52,6 +52,7 @@ private:
   std::string current_session_uuid_;
   bool session_persisted_ = false;
   bool auto_approve_ = false;
+  bool compact_prompt_ = false;
   std::optional<ptty::LineEditor> editor_;
   std::shared_ptr<agt::Llm> llm_;
   agt::Runner runner_;

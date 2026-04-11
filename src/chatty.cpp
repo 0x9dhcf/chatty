@@ -104,16 +104,20 @@ Chatty::Chatty()
 }
 
 std::string Chatty::make_prompt() const {
-  // provider \x1b[2m·\x1b[0m model [\x1b[2m·\x1b[0m thinking] \x1b[1m❯\x1b[0m
   std::string p;
-  p += std::format("\x1b[36m{}\x1b[0m", agt::provider_to_string(settings_.provider));
-  p += std::format(" \x1b[2m\xc2\xb7\x1b[0m ");  // dim ·
-  p += std::format("\x1b[33m{}\x1b[0m", settings_.model);
-  if (!settings_.thinking_effort.empty())
-    p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[32m{}\x1b[0m", settings_.thinking_effort);
-  if (auto_approve_)
-    p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[1;31mauto\x1b[0m");
-  p += std::format(" \x1b[1;35m\xe2\x9d\xaf\x1b[0m ");  // bold magenta ❯
+  if (!compact_prompt_) {
+    p += std::format("\x1b[36m{}\x1b[0m", agt::provider_to_string(settings_.provider));
+    p += std::format(" \x1b[2m\xc2\xb7\x1b[0m "); // dim ·
+    p += std::format("\x1b[33m{}\x1b[0m", settings_.model);
+    if (!settings_.thinking_effort.empty())
+      p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[32m{}\x1b[0m", settings_.thinking_effort);
+    if (auto_approve_)
+      p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[1;31mauto\x1b[0m");
+  } else if (auto_approve_) {
+    // Compact mode still surfaces auto-approve since it has consequences.
+    p += std::format("\x1b[1;31mauto\x1b[0m");
+  }
+  p += std::format(" \x1b[1;35m\xe2\x9d\xaf\x1b[0m "); // bold magenta ❯
   return p;
 }
 
@@ -132,6 +136,10 @@ void Chatty::reset_editor() {
         matches.push_back(cmd);
     std::ranges::sort(matches);
     return {start, req.cursor - start, std::move(matches)};
+  });
+  editor_->bind_key(ptty::bindable_key::ctrl_t, [this] {
+    compact_prompt_ = !compact_prompt_;
+    editor_->set_prompt(ptty::Prompt(make_prompt()));
   });
 }
 
