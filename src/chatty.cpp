@@ -61,6 +61,7 @@ Chatty::Chatty()
           {"/new", [this](const std::vector<std::string>& s) { command_new(s); }},
           {"/resume", [this](const std::vector<std::string>& s) { command_resume(s); }},
           {"/delete", [this](const std::vector<std::string>& s) { command_delete(s); }},
+          {"/rename", [this](const std::vector<std::string>& s) { command_rename(s); }},
           {"/auto", [this](const std::vector<std::string>& s) { command_auto(s); }},
           {"/help", [this](const std::vector<std::string>& s) { command_help(s); }},
       } {
@@ -152,6 +153,7 @@ void Chatty::run() noexcept {
     else
       handle_message(*line);
   }
+  std::println("\xf0\x9f\x91\x8b bye!"); // 👋
 }
 
 void Chatty::handle_message(const std::string& input) {
@@ -400,7 +402,25 @@ void Chatty::command_resume(const std::vector<std::string>&) {
     reset_editor();
   }
 
-  std::println("resumed: {}", info.name);
+  // Restore the messages
+  mdtty::Renderer md([](std::string_view s) {
+    std::print(stdout, "{}", s);
+    std::fflush(stdout);
+  });
+
+  for (auto m : agent_.session->messages()) {
+    auto role = m.value("role", "");
+    std::string_view icon;
+    if (role == "user")
+      icon = "\xf0\x9f\x91\xa4 "; // 👤
+    else if (role == "assistant")
+      icon = "\xf0\x9f\xa4\x96 "; // 🤖
+    else
+      continue;
+    std::print("{}", icon);
+    md.feed(m["content"].get<std::string>());
+    md.flush();
+  }
 }
 
 void Chatty::command_auto(const std::vector<std::string>& args) {
@@ -416,6 +436,28 @@ void Chatty::command_auto(const std::vector<std::string>& args) {
   }
   // std::println("auto-approve: {}", auto_approve_ ? "on" : "off");
   reset_editor();
+}
+
+void Chatty::command_rename(const std::vector<std::string>& args) {
+  if (!session_persisted_) {
+    std::println("current session is not saved");
+    return;
+  }
+  if (args.size() < 2) {
+    std::println("usage: /rename <new name>");
+    return;
+  }
+  std::string name = args[1];
+  for (std::size_t i = 2; i < args.size(); ++i) {
+    name += ' ';
+    name += args[i];
+  }
+  try {
+    session_mgr_.rename(current_session_uuid_, name);
+    std::println("renamed to: {}", name);
+  } catch (const std::exception& e) {
+    std::println("rename failed: {}", e.what());
+  }
 }
 
 void Chatty::command_delete(const std::vector<std::string>&) {
@@ -445,6 +487,7 @@ void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/new                — start a new session");
   std::println("/resume             — resume a saved session");
   std::println("/delete             — delete current session and start new");
+  std::println("/rename <name>      — rename the current session");
   std::println("/auto [on|off]      — auto-approve shell tool calls (toggle)");
   std::println("/help               — show this help");
   std::println("Ctrl-D              — quit");
