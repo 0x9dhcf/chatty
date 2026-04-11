@@ -1,16 +1,16 @@
 #pragma once
 
-#include "agt/tool.hpp"
+#include <agt/tool.hpp>
 #include <promptty/promptty.hpp>
 #include <string>
 #include <vector>
 
 class Ask : public agt::Tool {
-  const char *name() const noexcept override { return "ask"; }
-  const char *description() const noexcept override {
+  const char* name() const noexcept override { return "ask"; }
+  const char* description() const noexcept override {
     return "Present an interactive choice menu to the user and return their selection. "
-           "MUST be used whenever there are multiple valid options and the user hasn't "
-           "specified a preference. Do NOT list options in text — use this tool instead.";
+           "Use when a request is ambiguous and there are several reasonable ways to "
+           "fulfill it. Do not use for trivial or straightforward requests.";
   }
 
   agt::Json parameters() const override {
@@ -23,13 +23,13 @@ class Ask : public agt::Tool {
             {"required", {"choices"}}};
   }
 
-  agt::Json execute(const agt::Json &input, void *context = nullptr) override {
-    auto *editor = static_cast<ptty::LineEditor *>(context);
+  agt::Json execute(const agt::Json& input, void* context = nullptr) override {
+    auto* editor = static_cast<ptty::LineEditor*>(context);
     if (!editor)
       return {{"error", "no editor context"}};
 
     std::vector<std::string> choices;
-    for (auto &c : input["choices"])
+    for (const auto& c : input["choices"])
       choices.push_back(c.get<std::string>());
 
     if (choices.empty())

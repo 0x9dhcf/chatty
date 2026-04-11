@@ -2,9 +2,11 @@
 #include "environment.hpp"
 #include "paths.hpp"
 #include "tools.hpp"
+#include <agt/json.hpp>
 #include <agt/llm.hpp>
 #include <agt/runner.hpp>
 #include <agt/session.hpp>
+#include <agt/tool.hpp>
 #include <algorithm>
 #include <cstdlib>
 #include <mdtty/mdtty.hpp>
@@ -17,7 +19,7 @@ static std::string build_instructions() {
   auto e = Environment();
   std::ostringstream p;
 
-  p << "You are a helpful terminal assistant. Keep responses concise and\n"
+  p << "You are Chatty a helpful terminal assistant. Keep responses concise and\n"
     << "well-suited for terminal output.\n"
     << "\n## Your Environment\n"
     << "- OS: " << e.os << "\n"
@@ -28,12 +30,23 @@ static std::string build_instructions() {
     << "- NEVER fabricate paths, usernames, or system details. If you don't\n"
     << "  know something, use the shell tool to find out BEFORE acting.\n"
     << "  For example: echo $HOME, whoami, command -v, etc.\n"
-    << "- If a tool fails or returns nothing, investigate further. Don't\n"
-    << "  give up after one attempt. Think about what else could explain\n"
-    << "  the result and try a different approach.\n"
-    << "- When there are multiple valid options and the user hasn't specified\n"
-    << "  a preference, ALWAYS use the ask tool to let them choose instead\n"
-    << "  of picking for them or listing options in text.\n";
+    << "- For genuine tool errors (timeouts, missing files, command-not-\n"
+    << "  found, malformed output), investigate further. Don't give up\n"
+    << "  after one attempt. Think about what else could explain the\n"
+    << "  result and try a different approach.\n"
+    << "- If a tool result is exactly {\"error\": \"tool call denied\"}, the\n"
+    << "  user explicitly refused that action. This is NOT a normal error\n"
+    << "  to retry or work around. Do not propose the same call with\n"
+    << "  different arguments, do not try a near-equivalent tool, do not\n"
+    << "  loop. Either continue helpfully without that capability, or\n"
+    << "  stop and tell the user plainly what you would have needed and\n"
+    << "  why.\n"
+    << "- When a request is ambiguous and there are several reasonable ways\n"
+    << "  to fulfill it, use the ask tool to let the user choose instead\n"
+    << "  of picking for them. Do not use it for trivial requests.\n"
+    << "- Do not use emoji or pictographic Unicode characters in your\n"
+    << "  responses. Plain ASCII headings, bullets, and punctuation only.\n"
+    << "  Use markdown for emphasis, not glyphs.\n";
 
   return p.str();
 }
@@ -48,6 +61,7 @@ Chatty::Chatty()
           {"/new", [this](const std::vector<std::string>& s) { command_new(s); }},
           {"/resume", [this](const std::vector<std::string>& s) { command_resume(s); }},
           {"/delete", [this](const std::vector<std::string>& s) { command_delete(s); }},
+          {"/auto", [this](const std::vector<std::string>& s) { command_auto(s); }},
           {"/help", [this](const std::vector<std::string>& s) { command_help(s); }},
       } {
 
@@ -66,13 +80,26 @@ Chatty::Chatty()
   auto write_tool = std::make_shared<FileWrite>();
   auto ask_tool = std::make_shared<Ask>();
 
-  // agent
   agent_ = {
       .name = "chatty",
       .description = "A general-purpose terminal agent",
       .instructions = build_instructions(),
       .tools = {shell_tool, spawn_tool, read_tool, write_tool, ask_tool},
       .session = std::make_shared<agt::MemorySession>(),
+  };
+
+  policies_["shell"] = [this](const agt::Json& args) -> bool {
+    if (!auto_approve_) {
+      static const std::vector<std::string> choices = {"yes", "no", "yes, enable auto-approve"};
+      auto r = editor_->choose(choices, args["command"].dump() + " needs approval:");
+      if (!r || r->value == "no")
+        return false;
+      if (r->value == "yes, enable auto-approve") {
+        auto_approve_ = true;
+        reset_editor();
+      }
+    }
+    return true;
   };
 }
 
@@ -84,6 +111,8 @@ std::string Chatty::make_prompt() const {
   p += std::format("\x1b[33m{}\x1b[0m", settings_.model);
   if (!settings_.thinking_effort.empty())
     p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[32m{}\x1b[0m", settings_.thinking_effort);
+  if (auto_approve_)
+    p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[1;31mauto\x1b[0m");
   p += std::format(" \x1b[1;35m\xe2\x9d\xaf\x1b[0m ");  // bold magenta ❯
   return p;
 }
@@ -119,12 +148,41 @@ void Chatty::run() noexcept {
 
 void Chatty::handle_message(const std::string& input) {
   try {
-    mdtty::Renderer md(
-        [](std::string_view s) { std::print(stdout, "{}", s); std::fflush(stdout); });
+    mdtty::Renderer md([](std::string_view s) {
+      std::print(stdout, "{}", s);
+      std::fflush(stdout);
+    });
 
-    agt::RunnerOptions opts = {.max_turns = 10, .context = &*editor_,
-                               .thinking_effort = settings_.thinking_effort};
-    agt::RunnerHooks hooks = {.on_token = [&md](const std::string& tok) { md.feed(tok); }};
+    bool seen_content = false;
+
+    agt::RunnerOptions opts = {
+        .max_turns = 10, .context = &*editor_, .thinking_effort = settings_.thinking_effort};
+    agt::RunnerHooks hooks = {
+        .on_token =
+            [&md, &seen_content](const std::string& tok) {
+              if (!seen_content) {
+                // Skip leading whitespace the model often emits before its
+                // first real character.
+                auto first = tok.find_first_not_of(" \t\r\n");
+                if (first == std::string::npos)
+                  return;
+                seen_content = true;
+                md.feed(std::string_view(tok).substr(first));
+                return;
+              }
+              md.feed(tok);
+            },
+        .on_tool_start =
+            [this, &seen_content](const agt::Tool& t, const agt::Json& args) -> bool {
+              // After a tool call the model starts a fresh text block; allow
+              // its leading whitespace to be trimmed too.
+              seen_content = false;
+              auto it = policies_.find(t.name());
+              if (it != policies_.end())
+                return it->second(args);
+              return true;
+            },
+    };
 
     runner_.run(*llm_, agent_, input, opts, hooks);
     md.flush();
@@ -337,6 +395,21 @@ void Chatty::command_resume(const std::vector<std::string>&) {
   std::println("resumed: {}", info.name);
 }
 
+void Chatty::command_auto(const std::vector<std::string>& args) {
+  if (args.size() < 2) {
+    auto_approve_ = !auto_approve_;
+  } else if (args[1] == "on") {
+    auto_approve_ = true;
+  } else if (args[1] == "off") {
+    auto_approve_ = false;
+  } else {
+    std::println("usage: /auto [on|off]");
+    return;
+  }
+  // std::println("auto-approve: {}", auto_approve_ ? "on" : "off");
+  reset_editor();
+}
+
 void Chatty::command_delete(const std::vector<std::string>&) {
   if (!session_persisted_) {
     std::println("current session is not saved");
@@ -364,6 +437,7 @@ void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/new                — start a new session");
   std::println("/resume             — resume a saved session");
   std::println("/delete             — delete current session and start new");
+  std::println("/auto [on|off]      — auto-approve shell tool calls (toggle)");
   std::println("/help               — show this help");
   std::println("Ctrl-D              — quit");
 }
