@@ -1,7 +1,8 @@
 #pragma once
 
-#include "agt/tool.hpp"
+#include <agt/tool.hpp>
 #include "exec.hpp"
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -35,9 +36,9 @@ class FileRead : public agt::Tool {
 
     if (input.contains("len")) {
       auto len = input["len"].get<long>();
-      std::string buf(len, '\0');
+      std::string buf(static_cast<std::size_t>(len), '\0');
       in.read(buf.data(), len);
-      buf.resize(in.gcount());
+      buf.resize(static_cast<std::size_t>(in.gcount()));
       return buf;
     }
 

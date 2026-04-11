@@ -1,14 +1,14 @@
 #pragma once
 
-#include "agt/tool.hpp"
 #include "exec.hpp"
+#include <agt/tool.hpp>
 #include <cstdio>
 #include <exception>
 #include <string>
 
 class Shell : public agt::Tool {
-  const char *name() const noexcept override { return "shell"; }
-  const char *description() const noexcept override {
+  const char* name() const noexcept override { return "shell"; }
+  const char* description() const noexcept override {
     return "Execute a command in a shell and return its output. "
            "Only for commands that produce text output and exit quickly. "
            "Do NOT use for GUI applications or long-running processes — use spawn instead.";
@@ -17,15 +17,18 @@ class Shell : public agt::Tool {
   agt::Json parameters() const override {
     return {{"type", "object"},
             {"properties",
-             {{"command", {{"type", "string"}, {"description", "the command to execute"}}}}},
+             {{"command", {{"type", "string"}, {"description", "the command to execute"}}},
+              {"timeout",
+               {{"type", "number"}, {"description", "timeout in seconds before giving up"}}}}},
             {"required", {"command"}}};
   }
 
-  agt::Json execute(const agt::Json &input, void *context = nullptr) override {
+  agt::Json execute(const agt::Json& input, void* context = nullptr) override {
     (void)context;
     try {
       static constexpr size_t max_output = 8000;
-      auto result = exec(input["command"].get<std::string>());
+      int timeout = input.contains("timeout") ? input["timeout"].get<int>() : 10;
+      auto result = exec(input["command"].get<std::string>(), timeout);
       if (result.size() > max_output) {
         auto total = result.size();
         result.resize(max_output);
@@ -33,7 +36,7 @@ class Shell : public agt::Tool {
                   std::to_string(total) + " bytes)";
       }
       return result;
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
       return e.what();
     }
   }

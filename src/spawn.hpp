@@ -1,14 +1,14 @@
 #pragma once
 
-#include "agt/tool.hpp"
+#include <agt/tool.hpp>
 #include <fcntl.h>
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
 
 class Spawn : public agt::Tool {
-  const char *name() const noexcept override { return "spawn"; }
-  const char *description() const noexcept override {
+  const char* name() const noexcept override { return "spawn"; }
+  const char* description() const noexcept override {
     return "Launch a process in the background (fire and forget). "
            "Use this for GUI applications, editors, browsers, and any long-running process.";
   }
@@ -20,7 +20,7 @@ class Spawn : public agt::Tool {
             {"required", {"command"}}};
   }
 
-  agt::Json execute(const agt::Json &input, void *context = nullptr) override {
+  agt::Json execute(const agt::Json& input, void* context = nullptr) override {
     (void)context;
     auto cmd = input["command"].get<std::string>();
     pid_t pid = fork();

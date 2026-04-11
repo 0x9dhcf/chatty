@@ -76,7 +76,7 @@ Sessions are stored as SQLite databases under `~/.local/state/chatty/sessions/`.
 
 - **shell**: execute a command and return its output
 - **spawn**: run a process in the background
-- **file_read**: read file contents (supports partial reads)
+- **file_read**: read file contents (support partial reads)
 - **file_write**: write to a file (supports partial writes)
 - **ask**: present interactive choices to the user
 
