@@ -7,6 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# --- Generated version header ---
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.hpp.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/chatty/version.hpp
+  @ONLY
+)
+
 # --- CPM dependencies ---
 include(cmake/CPM.cmake)
 
@@ -56,6 +63,7 @@ add_executable(chatty ${CHATTY_SOURCES})
 
 target_include_directories(chatty
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+          ${CMAKE_CURRENT_BINARY_DIR}/include
 )
 
 target_compile_options(chatty PRIVATE ${CHATTY_WARNINGS})
