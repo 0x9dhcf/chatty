@@ -103,12 +103,26 @@ command = "/usr/bin/mcp-fs"
 args = ["--root", "$HOME/notes"]
 
 [[server]]
+name = "memory"
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-memory"]
+auto_approve = true            # skip the per-call approval prompt for this server
+
+[[server]]
 name = "github"
 transport = "http"
-command = "https://mcp.example.com/sse"
+command = "https://api.githubcopilot.com/mcp/"
+
+[server.headers]
+Authorization = "Bearer $GITHUB_PERSONAL_ACCESS_TOKEN"
 ```
 
-`command` and each `args` entry are expanded with shell-style word expansion (`~`, `$HOME`, ...) but command substitution is disabled. On startup (and on `/reload`) chatty connects to every server, lists their tools, and exposes them to the agent. A built-in tool always wins over an MCP tool with the same name (the colliding MCP tool is skipped with a stderr warning). All MCP tool calls go through the same approval prompt as `shell`; `/auto` bypasses it. Use `/mcp` to list connected servers and their tools.
+`command`, each `args` entry, and each header value are expanded with shell-style word expansion (`~`, `$HOME`, ...) but command substitution is disabled. Use `[server.headers]` (http transport only) to send authentication headers like `Authorization: Bearer ...` or `X-Api-Key: ...`. On startup (and on `/reload`) chatty connects to every server, lists their tools, and exposes them to the agent. A built-in tool always wins over an MCP tool with the same name (the colliding MCP tool is skipped with a stderr warning).
+
+By default, MCP tool calls go through the same approval prompt as `shell` (and `/auto` bypasses it globally). Set `auto_approve = true` on a per-server basis to skip the prompt for that server's tools — useful for low-risk servers like `memory` while keeping higher-impact ones (filesystem write, code execution, GitHub mutations) gated.
+
+Use `/mcp` to list connected servers and their tools.
 
 ## License
 

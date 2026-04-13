@@ -100,14 +100,15 @@ void Chatty::reload() {
       ++it;
   }
 
-  std::vector<agt::mcp_config> mcp_cfgs;
+  std::vector<McpServerConfig> mcp_cfgs;
   try {
     mcp_cfgs = load_mcp_configs(mcp_config_path());
   } catch (const std::exception& e) {
     std::println(stderr, "mcp: {}", e.what());
   }
 
-  for (const auto& cfg : mcp_cfgs) {
+  for (const auto& entry : mcp_cfgs) {
+    const auto& cfg = entry.server;
     auto server = std::make_unique<agt::McpServer>(cfg);
     try {
       server->connect();
@@ -125,25 +126,29 @@ void Chatty::reload() {
       }
       reserved.insert(name);
       mcp_tool_origin_[name] = cfg.name;
-      // Same approval policy as shell: every call needs explicit approval
-      // unless /auto is on. The dialog shows tool name + truncated args.
-      policies_[name] = [this, name](const agt::Json& args) -> bool {
-        if (auto_approve_)
+      // Servers marked auto_approve in mcp.toml skip the approval prompt
+      // entirely (no policy registered → on_tool_start defaults to allow).
+      // Otherwise, same shape as the shell policy: explicit approval per
+      // call unless the global /auto toggle is on.
+      if (!entry.auto_approve) {
+        policies_[name] = [this, name](const agt::Json& args) -> bool {
+          if (auto_approve_)
+            return true;
+          std::string preview = args.dump();
+          if (preview.size() > 200)
+            preview = preview.substr(0, 200) + "...";
+          static const std::vector<std::string> choices = {"yes", "no",
+                                                           "yes, enable auto-approve"};
+          auto r = editor_->choose(choices, name + " " + preview + ": needs approval");
+          if (!r || r->value == "no")
+            return false;
+          if (r->value == "yes, enable auto-approve") {
+            auto_approve_ = true;
+            reset_editor();
+          }
           return true;
-        std::string preview = args.dump();
-        if (preview.size() > 200)
-          preview = preview.substr(0, 200) + "...";
-        static const std::vector<std::string> choices = {"yes", "no",
-                                                         "yes, enable auto-approve"};
-        auto r = editor_->choose(choices, name + " " + preview + ": needs approval");
-        if (!r || r->value == "no")
-          return false;
-        if (r->value == "yes, enable auto-approve") {
-          auto_approve_ = true;
-          reset_editor();
-        }
-        return true;
-      };
+        };
+      }
       tools.push_back(std::move(tool));
     }
 
@@ -374,6 +379,10 @@ void Chatty::handle_message(const std::string& input) {
     }
   } catch (const agt::LlmError& e) {
     std::println(stderr, "{}", e.what());
+  } catch (const std::exception& e) {
+    // Catch-all so a tool-side or transport-side throw doesn't abort chatty.
+    // The user keeps their session and can retry or change course.
+    std::println(stderr, "error: {}", e.what());
   }
 }
 
