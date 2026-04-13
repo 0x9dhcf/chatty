@@ -1,4 +1,5 @@
 #include "chatty.hpp"
+#include "briefs_loader.hpp"
 #include "environment.hpp"
 #include "mcp_loader.hpp"
 #include "paths.hpp"
@@ -11,8 +12,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <mdtty/mdtty.hpp>
 #include <print>
 #include <ranges>
@@ -71,7 +70,7 @@ void Chatty::reload() {
                                       providers_[settings_.provider].key);
   }
 
-  load_briefs();
+  briefs_ = load_briefs(briefs_dir());
   build_instructions();
 
   auto session = agent_.session ? agent_.session : std::make_shared<agt::MemorySession>();
@@ -160,24 +159,6 @@ void Chatty::reload() {
   };
 
   reset_editor();
-}
-
-void Chatty::load_briefs() {
-  briefs_.clear();
-  auto mdfiles = std::filesystem::directory_iterator(briefs_dir()) |
-                 std::views::filter([](const std::filesystem::directory_entry& entry) {
-                   return entry.is_regular_file() && entry.path().extension() == ".md";
-                 });
-  for (auto f : mdfiles) {
-    auto path = f.path();
-    auto name = path.filename().stem().string();
-    std::ifstream file(path, std::ios::binary);
-    if (!file)
-      throw std::runtime_error("Cannot open file: " + path.string());
-    std::string content(std::filesystem::file_size(path), '\0');
-    file.read(content.data(), static_cast<std::streamsize>(content.size()));
-    briefs_[name] = std::move(content);
-  }
 }
 
 void Chatty::build_instructions() {

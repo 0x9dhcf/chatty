@@ -49,7 +49,6 @@ private:
 
   void start_new_session();
   void save_session_config();
-  void load_briefs();
   void build_instructions();
   void reset_editor();
   std::string make_prompt() const;
