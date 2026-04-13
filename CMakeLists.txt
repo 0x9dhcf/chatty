@@ -19,17 +19,20 @@ include(cmake/CPM.cmake)
 
 CPMAddPackage(
   NAME agt
-  URL https://github.com/0x9dhcf/agt/archive/refs/heads/main.tar.gz
+  GITHUB_REPOSITORY 0x9dhcf/agt
+  GIT_TAG v0.3.0
 )
 
 CPMAddPackage(
   NAME promptty
-  URL https://github.com/0x9dhcf/promptty/archive/refs/heads/main.tar.gz
+  GITHUB_REPOSITORY 0x9dhcf/promptty
+  GIT_TAG v0.2.0
 )
 
 CPMAddPackage(
   NAME mdtty
-  URL https://github.com/0x9dhcf/mdtty/archive/refs/heads/main.tar.gz
+  GITHUB_REPOSITORY 0x9dhcf/mdtty
+  GIT_TAG v0.2.0
 )
 
 CPMAddPackage(
@@ -69,9 +72,11 @@ target_include_directories(chatty
 target_compile_options(chatty PRIVATE ${CHATTY_WARNINGS})
 
 find_package(SQLite3 REQUIRED)
+find_package(CURL REQUIRED)
 
 target_link_libraries(chatty
   PRIVATE agt::agt promptty::promptty mdtty::mdtty tomlplusplus::tomlplusplus SQLite::SQLite3
+          CURL::libcurl
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

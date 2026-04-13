@@ -79,6 +79,16 @@ Sessions are stored as SQLite databases under `~/.local/state/chatty/sessions/`.
 - **file_read**: read file contents (support partial reads)
 - **file_write**: write to a file (supports partial writes)
 - **ask**: present interactive choices to the user
+- **web_search**: query the web via [Tavily](https://tavily.com) and return a synthesized answer plus top results (registered only when `TAVILY_API_KEY` is set)
+- **web_extract**: fetch one or more URLs via Tavily and return their cleaned content as markdown (registered only when `TAVILY_API_KEY` is set)
+
+To enable the web tools, set:
+
+```bash
+export TAVILY_API_KEY=...
+```
+
+When both web tools are registered, the system prompt instructs the model to treat them as paid external calls and use them sparingly: prefer `web_search` first, only `web_extract` on a specific URL or when search snippets were insufficient, and default to `extract_depth=basic`.
 
 ## License
 

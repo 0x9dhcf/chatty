@@ -8,6 +8,7 @@
 #include <agt/session.hpp>
 #include <agt/tool.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -71,12 +72,18 @@ void Chatty::reload() {
   build_instructions();
 
   auto session = agent_.session ? agent_.session : std::make_shared<agt::MemorySession>();
+  std::vector<std::shared_ptr<agt::Tool>> tools = {
+      std::make_shared<Shell>(), std::make_shared<Spawn>(), std::make_shared<FileRead>(),
+      std::make_shared<FileWrite>(), std::make_shared<Ask>()};
+  if (const char* k = std::getenv("TAVILY_API_KEY"); k != nullptr && k[0] != '\0') {
+    tools.push_back(std::make_shared<WebSearch>());
+    tools.push_back(std::make_shared<WebExtract>());
+  }
   agent_ = {
       .name = "chatty",
       .description = "A general-purpose terminal agent",
       .instructions = instructions_,
-      .tools = {std::make_shared<Shell>(), std::make_shared<Spawn>(), std::make_shared<FileRead>(),
-                std::make_shared<FileWrite>(), std::make_shared<Ask>()},
+      .tools = std::move(tools),
       .session = std::move(session),
   };
 
@@ -132,6 +139,20 @@ void Chatty::build_instructions() {
     << "  the middle of a sentence, a list or a table.\n"
     << "  Plain ASCII headings, bullets, and punctuation only.\n"
     << "  Use markdown for emphasis, not glyphs.\n";
+
+  if (const char* k = std::getenv("TAVILY_API_KEY"); k != nullptr && k[0] != '\0') {
+    p << "- The web_search and web_extract tools are paid external API calls.\n"
+      << "  Use them with parsimony:\n"
+      << "    * Do not search for facts you can already answer from training\n"
+      << "      or local context.\n"
+      << "    * Prefer web_search first; only use web_extract when (a) the\n"
+      << "      user gave you a specific URL, or (b) the search snippets were\n"
+      << "      clearly insufficient to answer.\n"
+      << "    * Do not chain extract over many URLs at once. One URL at a\n"
+      << "      time unless you have a specific need.\n"
+      << "    * Default to extract_depth='basic'; only request 'advanced'\n"
+      << "      when basic returned too little.\n";
+  }
 
   if (!briefs_.empty()) {
     p << "\n\n ## Per Topic Recommendations\n";
@@ -209,6 +230,14 @@ void Chatty::handle_message(const std::string& input) {
     });
 
     bool seen_content = false;
+#ifndef NDEBUG
+    using clock = std::chrono::steady_clock;
+    auto tool_t0 = clock::now();
+    auto llm_t0 = clock::now();
+    auto elapsed_ms = [](clock::time_point t0) {
+      return std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - t0).count();
+    };
+#endif
 
     agt::RunnerOptions opts = {
         .max_turns = 10, .context = &*editor_, .thinking_effort = settings_.thinking_effort};
@@ -227,15 +256,40 @@ void Chatty::handle_message(const std::string& input) {
               }
               md.feed(tok);
             },
-        .on_tool_start = [this, &seen_content](const agt::Tool& t, const agt::Json& args) -> bool {
+#ifndef NDEBUG
+        .on_llm_start = [&llm_t0](const agt::Llm&, const agt::Json&) { llm_t0 = clock::now(); },
+        .on_llm_stop =
+            [&llm_t0, &elapsed_ms](const agt::Llm&, const agt::Json&) {
+              std::print(stderr, "\x1b[2;34m[llm] {} ms\x1b[0m\n", elapsed_ms(llm_t0));
+              std::fflush(stderr);
+            },
+#endif
+        .on_tool_start = [this, &seen_content
+#ifndef NDEBUG
+                          ,
+                          &tool_t0
+#endif
+        ](const agt::Tool& t, const agt::Json& args) -> bool {
           // After a tool call the model starts a fresh text block; allow
           // its leading whitespace to be trimmed too.
           seen_content = false;
+#ifndef NDEBUG
+          std::print(stderr, "\x1b[2;36m[tool] {}\x1b[0m", t.name());
+          std::fflush(stderr);
+          tool_t0 = clock::now();
+#endif
           auto it = policies_.find(t.name());
           if (it != policies_.end())
             return it->second(args);
           return true;
         },
+#ifndef NDEBUG
+        .on_tool_stop =
+            [&tool_t0, &elapsed_ms](const agt::Tool&, const agt::Json&, const agt::Json&) {
+              std::print(stderr, "\x1b[2;36m {} ms\x1b[0m\n", elapsed_ms(tool_t0));
+              std::fflush(stderr);
+            },
+#endif
     };
 
     runner_.run(*llm_, agent_, input, opts, hooks);
