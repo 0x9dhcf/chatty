@@ -30,11 +30,12 @@ static void exec(sqlite3* db, const char* sql) {
 }
 
 SessionManager::SessionManager() {
-  auto base = states_dir();
-  sessions_dir_ = base / "sessions";
-  std::filesystem::create_directories(sessions_dir_);
+  // auto base = states_dir();
+  // sessions_dir_ = base / "sessions";
+  // std::filesystem::create_directories(sessions_dir_);
 
-  auto db_path = base / "sessions.db";
+  // auto db_path = base / "sessions.db";
+  auto db_path = sessions_path();
   if (sqlite3_open(db_path.c_str(), &db_) != SQLITE_OK)
     throw std::runtime_error("Cannot open session index: " + db_path.string());
 
@@ -98,7 +99,8 @@ SessionInfo SessionManager::create(const std::string& name, const ChattySettings
 }
 
 std::shared_ptr<agt::Session> SessionManager::open(const std::string& uuid) {
-  auto path = sessions_dir_ / (uuid + ".db");
+  // auto path = sessions_dir_ / (uuid + ".db");
+  auto path = sessions_dir() / (uuid + ".db");
   return agt::make_sqlite_session(path.string(), "default");
 }
 
@@ -134,7 +136,8 @@ void SessionManager::remove(const std::string& uuid) {
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);
 
-  auto path = sessions_dir_ / (uuid + ".db");
+  // auto path = sessions_dir_ / (uuid + ".db");
+  auto path = sessions_dir() / (uuid + ".db");
   std::filesystem::remove(path);
 }
 

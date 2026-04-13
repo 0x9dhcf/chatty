@@ -39,10 +39,22 @@ std::filesystem::path briefs_dir() {
   return path;
 }
 
-std::filesystem::path setting_path() {
+std::filesystem::path sessions_dir() {
+  const auto sts_dir = states_dir();
+  auto path = sts_dir / "sessions";
+
+  std::filesystem::create_directories(path);
+  return path;
+}
+
+std::filesystem::path settings_path() {
   return config_dir() / "settings.toml";
 }
 
 std::filesystem::path history_path() {
   return states_dir() / "history";
+}
+
+std::filesystem::path sessions_path() {
+  return sessions_dir() / "session.db";
 }

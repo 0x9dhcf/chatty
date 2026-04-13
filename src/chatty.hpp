@@ -1,5 +1,6 @@
 #pragma once
 
+#include "environment.hpp"
 #include "settings.hpp"
 #include "session_manager.hpp"
 #include <agt/agent.hpp>
@@ -16,7 +17,7 @@
 
 class Chatty {
 
-  using command = std::function<void(const std::vector<std::string> &)>;
+  using Command = std::function<void(const std::vector<std::string> &)>;
   using ToolPolicy = std::function<bool(const agt::Json &)>;
 
 public:
@@ -27,6 +28,8 @@ public:
   void run() noexcept;
 
 private:
+  void reload();
+
   void handle_message(const std::string &input);
   void handle_command(const std::string &input);
   void command_provider(const std::vector<std::string> &args);
@@ -39,16 +42,24 @@ private:
   void command_delete(const std::vector<std::string> &args);
   void command_rename(const std::vector<std::string> &args);
   void command_auto(const std::vector<std::string> &args);
+  void command_reload(const std::vector<std::string> &args);
   void command_help(const std::vector<std::string> &args);
 
   void start_new_session();
   void save_session_config();
+  void load_briefs();
+  void build_instructions();
   void reset_editor();
   std::string make_prompt() const;
 
-  std::unordered_map<std::string, command> commands_;
+  std::string instructions_;
+  std::unordered_map<std::string, Command> commands_;
   std::unordered_map<agt::Provider, agt::ProviderConfig> providers_;
+  std::unordered_map<std::string, ToolPolicy> policies_;
+  std::unordered_map<std::string, std::string> briefs_;
+  Environment environnement_;
   ChattySettings settings_;
+
   SessionManager session_mgr_;
   std::string current_session_uuid_;
   bool session_persisted_ = false;
@@ -58,5 +69,4 @@ private:
   std::shared_ptr<agt::Llm> llm_;
   agt::Runner runner_;
   agt::Agent agent_;
-  std::unordered_map<std::string, ToolPolicy> policies_;
 };

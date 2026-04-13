@@ -2,7 +2,6 @@
 
 #include "settings.hpp"
 #include <agt/session.hpp>
-#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -34,10 +33,11 @@ public:
   std::vector<SessionInfo> list() const;
   void remove(const std::string& uuid);
   void rename(const std::string& uuid, const std::string& name);
+  // XXX: we are only interrested by model not the whole settings
   void update_config(const std::string& uuid, const ChattySettings& cfg);
   void touch(const std::string& uuid);
 
 private:
-  std::filesystem::path sessions_dir_;
+  // std::filesystem::path sessions_dir_;
   sqlite3* db_ = nullptr;
 };

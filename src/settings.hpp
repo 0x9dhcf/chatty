@@ -3,13 +3,11 @@
 #include <agt/llm.hpp>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 struct ChattySettings {
   agt::Provider provider;
   std::string model;
   std::string thinking_effort;
-  std::vector<std::string> enabled_briefs;
 };
 
 ChattySettings

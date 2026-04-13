@@ -9,23 +9,107 @@
 #include <agt/tool.hpp>
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <mdtty/mdtty.hpp>
 #include <print>
+#include <ranges>
 #include <sstream>
 #include <string>
 #include <vector>
 
-static std::string build_instructions() {
-  auto e = Environment();
-  std::ostringstream p;
+Chatty::Chatty()
+    : commands_{
+          {"/provider", [this](const std::vector<std::string>& s) { command_provider(s); }},
+          {"/model", [this](const std::vector<std::string>& s) { command_model(s); }},
+          {"/environment", [this](const std::vector<std::string>& s) { command_env(s); }},
+          {"/thinking", [this](const std::vector<std::string>& s) { command_thinking(s); }},
+          {"/default", [this](const std::vector<std::string>& s) { command_default(s); }},
+          {"/new", [this](const std::vector<std::string>& s) { command_new(s); }},
+          {"/resume", [this](const std::vector<std::string>& s) { command_resume(s); }},
+          {"/delete", [this](const std::vector<std::string>& s) { command_delete(s); }},
+          {"/rename", [this](const std::vector<std::string>& s) { command_rename(s); }},
+          {"/auto", [this](const std::vector<std::string>& s) { command_auto(s); }},
+          {"/reload", [this](const std::vector<std::string>& s) { command_reload(s); }},
+          {"/help", [this](const std::vector<std::string>& s) { command_help(s); }},
+      },
+      policies_{
+          {"shell",
+           [this](const agt::Json& args) -> bool {
+             if (!auto_approve_) {
+               static const std::vector<std::string> choices = {"yes", "no",
+                                                                "yes, enable auto-approve"};
+               auto r = editor_->choose(choices, args["command"].dump() + ": needs approval");
+               if (!r || r->value == "no")
+                 return false;
+               if (r->value == "yes, enable auto-approve") {
+                 auto_approve_ = true;
+                 reset_editor();
+               }
+             }
+             return true;
+           }},
+      } {
+}
 
+void Chatty::reload() {
+  environnement_ = Environment();
+
+  providers_ = agt::load_providers_from_env();
+  if (providers_.empty())
+    throw std::runtime_error("no provider key found");
+
+  // On first load, read persisted defaults; on subsequent reloads keep the
+  // live provider/model/thinking selection the user made this session.
+  if (!llm_) {
+    settings_ = load_settings(providers_);
+    llm_ = std::make_shared<agt::Llm>(settings_.provider, settings_.model,
+                                      providers_[settings_.provider].key);
+  }
+
+  load_briefs();
+  build_instructions();
+
+  auto session = agent_.session ? agent_.session : std::make_shared<agt::MemorySession>();
+  agent_ = {
+      .name = "chatty",
+      .description = "A general-purpose terminal agent",
+      .instructions = instructions_,
+      .tools = {std::make_shared<Shell>(), std::make_shared<Spawn>(), std::make_shared<FileRead>(),
+                std::make_shared<FileWrite>(), std::make_shared<Ask>()},
+      .session = std::move(session),
+  };
+
+  reset_editor();
+}
+
+void Chatty::load_briefs() {
+  briefs_.clear();
+  auto mdfiles = std::filesystem::directory_iterator(briefs_dir()) |
+                 std::views::filter([](const std::filesystem::directory_entry& entry) {
+                   return entry.is_regular_file() && entry.path().extension() == ".md";
+                 });
+  for (auto f : mdfiles) {
+    auto path = f.path();
+    auto name = path.filename().stem().string();
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+      throw std::runtime_error("Cannot open file: " + path.string());
+    std::string content(std::filesystem::file_size(path), '\0');
+    file.read(content.data(), static_cast<std::streamsize>(content.size()));
+    briefs_[name] = std::move(content);
+  }
+}
+
+void Chatty::build_instructions() {
+  std::ostringstream p;
   p << "You are Chatty a helpful terminal assistant. Keep responses concise and\n"
     << "well-suited for terminal output.\n"
     << "\n## Your Environment\n"
-    << "- OS: " << e.os << "\n"
-    << "- Shell: " << e.shell << "\n"
-    << "- Desktop: " << e.desktop << "\n"
-    << "- Session: " << e.session << "\n"
+    << "- OS: " << environnement_.os << "\n"
+    << "- Shell: " << environnement_.shell << "\n"
+    << "- Desktop: " << environnement_.desktop << "\n"
+    << "- Session: " << environnement_.session << "\n"
     << "\n## Rules\n"
     << "- NEVER fabricate paths, usernames, or system details. If you don't\n"
     << "  know something, use the shell tool to find out BEFORE acting.\n"
@@ -44,64 +128,19 @@ static std::string build_instructions() {
     << "- When a request is ambiguous and there are several reasonable ways\n"
     << "  to fulfill it, use the ask tool to let the user choose instead\n"
     << "  of picking for them. Do not use it for trivial requests.\n"
-    << "- Do not use emoji or pictographic Unicode characters in your\n"
-    << "  responses. Plain ASCII headings, bullets, and punctuation only.\n"
+    << "- Do not use emoji or pictographic Unicode characters in\n"
+    << "  the middle of a sentence, a list or a table.\n"
+    << "  Plain ASCII headings, bullets, and punctuation only.\n"
     << "  Use markdown for emphasis, not glyphs.\n";
 
-  return p.str();
-}
-
-Chatty::Chatty()
-    : commands_{
-          {"/provider", [this](const std::vector<std::string>& s) { command_provider(s); }},
-          {"/model", [this](const std::vector<std::string>& s) { command_model(s); }},
-          {"/environment", [this](const std::vector<std::string>& s) { command_env(s); }},
-          {"/thinking", [this](const std::vector<std::string>& s) { command_thinking(s); }},
-          {"/default", [this](const std::vector<std::string>& s) { command_default(s); }},
-          {"/new", [this](const std::vector<std::string>& s) { command_new(s); }},
-          {"/resume", [this](const std::vector<std::string>& s) { command_resume(s); }},
-          {"/delete", [this](const std::vector<std::string>& s) { command_delete(s); }},
-          {"/rename", [this](const std::vector<std::string>& s) { command_rename(s); }},
-          {"/auto", [this](const std::vector<std::string>& s) { command_auto(s); }},
-          {"/help", [this](const std::vector<std::string>& s) { command_help(s); }},
-      } {
-
-  providers_ = agt::load_providers_from_env();
-  if (providers_.empty())
-    throw std::runtime_error("no provider key found");
-
-  settings_ = load_settings(providers_);
-  llm_ =
-      std::make_shared<agt::Llm>(settings_.provider, settings_.model, providers_[settings_.provider].key);
-  reset_editor();
-
-  auto shell_tool = std::make_shared<Shell>();
-  auto spawn_tool = std::make_shared<Spawn>();
-  auto read_tool = std::make_shared<FileRead>();
-  auto write_tool = std::make_shared<FileWrite>();
-  auto ask_tool = std::make_shared<Ask>();
-
-  agent_ = {
-      .name = "chatty",
-      .description = "A general-purpose terminal agent",
-      .instructions = build_instructions(),
-      .tools = {shell_tool, spawn_tool, read_tool, write_tool, ask_tool},
-      .session = std::make_shared<agt::MemorySession>(),
-  };
-
-  policies_["shell"] = [this](const agt::Json& args) -> bool {
-    if (!auto_approve_) {
-      static const std::vector<std::string> choices = {"yes", "no", "yes, enable auto-approve"};
-      auto r = editor_->choose(choices, args["command"].dump() + " needs approval:");
-      if (!r || r->value == "no")
-        return false;
-      if (r->value == "yes, enable auto-approve") {
-        auto_approve_ = true;
-        reset_editor();
-      }
+  if (!briefs_.empty()) {
+    p << "\n\n ## Per Topic Recommendations\n";
+    for (const auto& [key, value] : briefs_) {
+      p << "### " << key << "\n" << value << "\n";
     }
-    return true;
-  };
+  }
+
+  instructions_ = p.str();
 }
 
 std::string Chatty::make_prompt() const {
@@ -145,6 +184,12 @@ void Chatty::reset_editor() {
 }
 
 void Chatty::run() noexcept {
+  try {
+    reload();
+  } catch (const std::exception& e) {
+    std::cerr << "Warning: " << e.what() << "\n";
+  }
+
   while (auto line = editor_->get_line()) {
     if (line->empty())
       continue;
@@ -182,16 +227,15 @@ void Chatty::handle_message(const std::string& input) {
               }
               md.feed(tok);
             },
-        .on_tool_start =
-            [this, &seen_content](const agt::Tool& t, const agt::Json& args) -> bool {
-              // After a tool call the model starts a fresh text block; allow
-              // its leading whitespace to be trimmed too.
-              seen_content = false;
-              auto it = policies_.find(t.name());
-              if (it != policies_.end())
-                return it->second(args);
-              return true;
-            },
+        .on_tool_start = [this, &seen_content](const agt::Tool& t, const agt::Json& args) -> bool {
+          // After a tool call the model starts a fresh text block; allow
+          // its leading whitespace to be trimmed too.
+          seen_content = false;
+          auto it = policies_.find(t.name());
+          if (it != policies_.end())
+            return it->second(args);
+          return true;
+        },
     };
 
     runner_.run(*llm_, agent_, input, opts, hooks);
@@ -347,7 +391,7 @@ void Chatty::command_default(const std::vector<std::string>&) {
   if (!thinking_choice)
     return;
 
-  ChattySettings defaults{provider, model, levels[thinking_choice->index], settings_.enabled_briefs};
+  ChattySettings defaults{provider, model, levels[thinking_choice->index]};
   try {
     save_settings(defaults);
     std::println("defaults saved: {} / {} / {}", agt::provider_to_string(defaults.provider),
@@ -474,7 +518,17 @@ void Chatty::command_env(const std::vector<std::string>&) {
   for (auto& [p, cfg] : providers_) {
     std::println("{}:", agt::provider_to_string(p));
     for (auto& m : cfg.models)
-      std::println("  {}{}", m.id, (p == settings_.provider && m.id == settings_.model) ? " *" : "");
+      std::println("  {}{}", m.id,
+                   (p == settings_.provider && m.id == settings_.model) ? " *" : "");
+  }
+}
+
+void Chatty::command_reload(const std::vector<std::string>&) {
+  try {
+    reload();
+    std::println("reloaded");
+  } catch (const std::exception& e) {
+    std::println("reload failed: {}", e.what());
   }
 }
 
@@ -489,6 +543,7 @@ void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/delete             — delete current session and start new");
   std::println("/rename <name>      — rename the current session");
   std::println("/auto [on|off]      — auto-approve shell tool calls (toggle)");
+  std::println("/reload             — reload environment, providers, briefs, instructions");
   std::println("/help               — show this help");
   std::println("Ctrl-D              — quit");
 }
