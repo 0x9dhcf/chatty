@@ -63,6 +63,7 @@ Then run:
 | `/new`               | Start a new session                           |
 | `/resume`            | Resume a saved session                        |
 | `/delete`            | Delete current session and start new          |
+| `/mcp`               | List connected MCP servers and their tools    |
 | `/help`              | Show available commands                       |
 | `Ctrl-D`             | Quit                                          |
 
@@ -89,6 +90,25 @@ export TAVILY_API_KEY=...
 ```
 
 When both web tools are registered, the system prompt instructs the model to treat them as paid external calls and use them sparingly: prefer `web_search` first, only `web_extract` on a specific URL or when search snippets were insufficient, and default to `extract_depth=basic`.
+
+## MCP servers
+
+Additional tools can be loaded from [Model Context Protocol](https://modelcontextprotocol.io) servers by listing them in `~/.config/chatty/mcp.toml`:
+
+```toml
+[[server]]
+name = "filesystem"
+transport = "stdio"
+command = "/usr/bin/mcp-fs"
+args = ["--root", "$HOME/notes"]
+
+[[server]]
+name = "github"
+transport = "http"
+command = "https://mcp.example.com/sse"
+```
+
+`command` and each `args` entry are expanded with shell-style word expansion (`~`, `$HOME`, ...) but command substitution is disabled. On startup (and on `/reload`) chatty connects to every server, lists their tools, and exposes them to the agent. A built-in tool always wins over an MCP tool with the same name (the colliding MCP tool is skipped with a stderr warning). All MCP tool calls go through the same approval prompt as `shell`; `/auto` bypasses it. Use `/mcp` to list connected servers and their tools.
 
 ## License
 

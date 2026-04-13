@@ -6,6 +6,7 @@
 #include <agt/agent.hpp>
 #include <agt/json.hpp>
 #include <agt/llm.hpp>
+#include <agt/mcp.hpp>
 #include <agt/runner.hpp>
 #include <agt/session.hpp>
 #include <functional>
@@ -43,6 +44,7 @@ private:
   void command_rename(const std::vector<std::string> &args);
   void command_auto(const std::vector<std::string> &args);
   void command_reload(const std::vector<std::string> &args);
+  void command_mcp(const std::vector<std::string> &args);
   void command_help(const std::vector<std::string> &args);
 
   void start_new_session();
@@ -59,6 +61,9 @@ private:
   std::unordered_map<std::string, std::string> briefs_;
   Environment environnement_;
   ChattySettings settings_;
+
+  std::vector<std::unique_ptr<agt::McpServer>> mcp_servers_;
+  std::unordered_map<std::string, std::string> mcp_tool_origin_;
 
   SessionManager session_mgr_;
   std::string current_session_uuid_;

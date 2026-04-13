@@ -1,5 +1,6 @@
 #include "chatty.hpp"
 #include "environment.hpp"
+#include "mcp_loader.hpp"
 #include "paths.hpp"
 #include "tools.hpp"
 #include <agt/json.hpp>
@@ -17,6 +18,7 @@
 #include <ranges>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 Chatty::Chatty()
@@ -32,6 +34,7 @@ Chatty::Chatty()
           {"/rename", [this](const std::vector<std::string>& s) { command_rename(s); }},
           {"/auto", [this](const std::vector<std::string>& s) { command_auto(s); }},
           {"/reload", [this](const std::vector<std::string>& s) { command_reload(s); }},
+          {"/mcp", [this](const std::vector<std::string>& s) { command_mcp(s); }},
           {"/help", [this](const std::vector<std::string>& s) { command_help(s); }},
       },
       policies_{
@@ -79,6 +82,75 @@ void Chatty::reload() {
     tools.push_back(std::make_shared<WebSearch>());
     tools.push_back(std::make_shared<WebExtract>());
   }
+
+  // Built-in tool names take precedence; MCP tools that collide are skipped.
+  std::unordered_set<std::string> reserved;
+  for (const auto& t : tools)
+    reserved.insert(t->name());
+
+  // Tear down any previously connected MCP servers (e.g. on /reload) and
+  // rebuild from the on-disk config.
+  mcp_servers_.clear();
+  mcp_tool_origin_.clear();
+  // Strip stale per-MCP-tool policies; built-in policies live in the
+  // initial map populated by the constructor and stay in place.
+  for (auto it = policies_.begin(); it != policies_.end();) {
+    if (it->first != "shell")
+      it = policies_.erase(it);
+    else
+      ++it;
+  }
+
+  std::vector<agt::mcp_config> mcp_cfgs;
+  try {
+    mcp_cfgs = load_mcp_configs(mcp_config_path());
+  } catch (const std::exception& e) {
+    std::println(stderr, "mcp: {}", e.what());
+  }
+
+  for (const auto& cfg : mcp_cfgs) {
+    auto server = std::make_unique<agt::McpServer>(cfg);
+    try {
+      server->connect();
+    } catch (const std::exception& e) {
+      std::println(stderr, "mcp: server '{}' failed to connect: {}", cfg.name, e.what());
+      continue;
+    }
+
+    for (auto& tool : server->tools()) {
+      std::string name = tool->name();
+      if (reserved.contains(name)) {
+        std::println(stderr, "mcp: server '{}' tool '{}' shadows a built-in, skipping",
+                     cfg.name, name);
+        continue;
+      }
+      reserved.insert(name);
+      mcp_tool_origin_[name] = cfg.name;
+      // Same approval policy as shell: every call needs explicit approval
+      // unless /auto is on. The dialog shows tool name + truncated args.
+      policies_[name] = [this, name](const agt::Json& args) -> bool {
+        if (auto_approve_)
+          return true;
+        std::string preview = args.dump();
+        if (preview.size() > 200)
+          preview = preview.substr(0, 200) + "...";
+        static const std::vector<std::string> choices = {"yes", "no",
+                                                         "yes, enable auto-approve"};
+        auto r = editor_->choose(choices, name + " " + preview + ": needs approval");
+        if (!r || r->value == "no")
+          return false;
+        if (r->value == "yes, enable auto-approve") {
+          auto_approve_ = true;
+          reset_editor();
+        }
+        return true;
+      };
+      tools.push_back(std::move(tool));
+    }
+
+    mcp_servers_.push_back(std::move(server));
+  }
+
   agent_ = {
       .name = "chatty",
       .description = "A general-purpose terminal agent",
@@ -586,6 +658,25 @@ void Chatty::command_reload(const std::vector<std::string>&) {
   }
 }
 
+void Chatty::command_mcp(const std::vector<std::string>&) {
+  if (mcp_servers_.empty()) {
+    std::println("no MCP servers connected (configure ~/.config/chatty/mcp.toml)");
+    return;
+  }
+  // Group by originating server. mcp_tool_origin_ maps tool name -> server name;
+  // walk it once to invert into server -> [tools].
+  std::unordered_map<std::string, std::vector<std::string>> by_server;
+  for (const auto& [tool_name, server_name] : mcp_tool_origin_)
+    by_server[server_name].push_back(tool_name);
+
+  for (auto& [server, names] : by_server) {
+    std::ranges::sort(names);
+    std::println("{}", server);
+    for (const auto& n : names)
+      std::println("  {}", n);
+  }
+}
+
 void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/provider [name]    — switch LLM provider");
   std::println("/model [name]       — switch model");
@@ -598,6 +689,7 @@ void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/rename <name>      — rename the current session");
   std::println("/auto [on|off]      — auto-approve shell tool calls (toggle)");
   std::println("/reload             — reload environment, providers, briefs, instructions");
+  std::println("/mcp                — list connected MCP servers and their tools");
   std::println("/help               — show this help");
   std::println("Ctrl-D              — quit");
 }

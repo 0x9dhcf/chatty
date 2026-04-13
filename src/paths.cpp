@@ -51,6 +51,10 @@ std::filesystem::path settings_path() {
   return config_dir() / "settings.toml";
 }
 
+std::filesystem::path mcp_config_path() {
+  return config_dir() / "mcp.toml";
+}
+
 std::filesystem::path history_path() {
   return states_dir() / "history";
 }
