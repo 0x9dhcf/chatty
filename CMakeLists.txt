@@ -28,7 +28,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME promptty
   GITHUB_REPOSITORY 0x9dhcf/promptty
-  GIT_TAG v0.2.1
+  GIT_TAG v0.2.2
   EXCLUDE_FROM_ALL YES
   SYSTEM YES
 )
