@@ -41,10 +41,12 @@ private:
   void command_new(const std::vector<std::string> &args);
   void command_resume(const std::vector<std::string> &args);
   void command_delete(const std::vector<std::string> &args);
+  void command_delete_all(const std::vector<std::string> &args);
   void command_rename(const std::vector<std::string> &args);
   void command_auto(const std::vector<std::string> &args);
   void command_reload(const std::vector<std::string> &args);
   void command_mcp(const std::vector<std::string> &args);
+  void command_briefs(const std::vector<std::string> &args);
   void command_help(const std::vector<std::string> &args);
 
   void start_new_session();

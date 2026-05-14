@@ -74,6 +74,7 @@ Pass `--version` to print the build version and exit.
 | `/resume`            | Resume a saved session                        |
 | `/delete`            | Delete current session and start new          |
 | `/mcp`               | List connected MCP servers and their tools    |
+| `/briefs [name]`     | List loaded briefs, or render one by name     |
 | `/help`              | Show available commands                       |
 | `Ctrl-D`             | Quit                                          |
 
