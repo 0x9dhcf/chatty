@@ -35,6 +35,14 @@ For local agt development, point CPM to your local source:
 cmake --preset debug -DCPM_agt_SOURCE=/path/to/agt
 ```
 
+## Install
+
+```bash
+cmake --install build/release --prefix ~/.local
+```
+
+This drops `chatty` at `~/.local/bin/chatty`. Use `--prefix /usr/local` (with `sudo`) for a system-wide install. The binary statically links agt, promptty, and mdtty, so only system libraries (`libcurl`, `libsqlite3`, libstdc++) need to be present at runtime.
+
 ## Usage
 
 Set at least one provider API key:
@@ -51,6 +59,8 @@ Then run:
 ```bash
 ./build/debug/chatty
 ```
+
+Pass `--version` to print the build version and exit.
 
 ## Commands
 
