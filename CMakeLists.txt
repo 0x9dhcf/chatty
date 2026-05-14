@@ -20,25 +20,33 @@ include(cmake/CPM.cmake)
 CPMAddPackage(
   NAME agt
   GITHUB_REPOSITORY 0x9dhcf/agt
-  GIT_TAG v0.3.0
+  GIT_TAG v0.6.3
+  EXCLUDE_FROM_ALL YES
+  SYSTEM YES
 )
 
 CPMAddPackage(
   NAME promptty
   GITHUB_REPOSITORY 0x9dhcf/promptty
-  GIT_TAG v0.2.0
+  GIT_TAG v0.2.1
+  EXCLUDE_FROM_ALL YES
+  SYSTEM YES
 )
 
 CPMAddPackage(
   NAME mdtty
   GITHUB_REPOSITORY 0x9dhcf/mdtty
   GIT_TAG v0.2.0
+  EXCLUDE_FROM_ALL YES
+  SYSTEM YES
 )
 
 CPMAddPackage(
   NAME tomlplusplus
   GITHUB_REPOSITORY marzer/tomlplusplus
   VERSION 3.4.0
+  EXCLUDE_FROM_ALL YES
+  SYSTEM YES
 )
 
 # --- Sources ---
