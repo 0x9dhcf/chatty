@@ -30,10 +30,12 @@ Chatty::Chatty()
           {"/new", [this](const std::vector<std::string>& s) { command_new(s); }},
           {"/resume", [this](const std::vector<std::string>& s) { command_resume(s); }},
           {"/delete", [this](const std::vector<std::string>& s) { command_delete(s); }},
+          {"/delete-all", [this](const std::vector<std::string>& s) { command_delete_all(s); }},
           {"/rename", [this](const std::vector<std::string>& s) { command_rename(s); }},
           {"/auto", [this](const std::vector<std::string>& s) { command_auto(s); }},
           {"/reload", [this](const std::vector<std::string>& s) { command_reload(s); }},
           {"/mcp", [this](const std::vector<std::string>& s) { command_mcp(s); }},
+          {"/briefs", [this](const std::vector<std::string>& s) { command_briefs(s); }},
           {"/help", [this](const std::vector<std::string>& s) { command_help(s); }},
       },
       policies_{
@@ -213,7 +215,13 @@ void Chatty::build_instructions() {
   }
 
   if (!briefs_.empty()) {
-    p << "\n\n ## Per Topic Recommendations\n";
+    p << "\n\n## Per Topic Recommendations\n"
+      << "The following briefs are topical references, not general guidance.\n"
+      << "Each section header names the topic/area it applies to. Consult a\n"
+      << "brief only when the user's current request clearly touches that\n"
+      << "topic; otherwise ignore it. Do not apply a brief's rules, style,\n"
+      << "or recommendations to unrelated requests, and do not mention a\n"
+      << "brief unless you are acting on it.\n";
     for (const auto& [key, value] : briefs_) {
       p << "### " << key << "\n" << value << "\n";
     }
@@ -577,6 +585,9 @@ void Chatty::command_resume(const std::vector<std::string>&) {
       icon = "\xf0\x9f\xa4\x96 "; // 🤖
     else
       continue;
+    // Pure tool-call assistant turns have content: null — nothing to render.
+    if (!m.contains("content") || !m["content"].is_string())
+      continue;
     std::print("{}", icon);
     md.feed(m["content"].get<std::string>());
     md.flush();
@@ -630,6 +641,31 @@ void Chatty::command_delete(const std::vector<std::string>&) {
   std::println("session deleted, new session started");
 }
 
+void Chatty::command_delete_all(const std::vector<std::string>&) {
+  auto sessions = session_mgr_.list();
+  if (sessions.empty()) {
+    std::println("no saved sessions");
+    return;
+  }
+  static const std::vector<std::string> choices = {"no", "yes"};
+  auto r = editor_->choose(
+      choices, std::format("delete ALL {} sessions (including current)?", sessions.size()));
+  if (!r || r->value != "yes")
+    return;
+
+  std::size_t deleted = 0;
+  for (const auto& s : sessions) {
+    try {
+      session_mgr_.remove(s.uuid);
+      ++deleted;
+    } catch (const std::exception& e) {
+      std::println("failed to delete {}: {}", s.name, e.what());
+    }
+  }
+  start_new_session();
+  std::println("{} session(s) deleted, new session started", deleted);
+}
+
 void Chatty::command_env(const std::vector<std::string>&) {
   for (auto& [p, cfg] : providers_) {
     std::println("{}:", agt::provider_to_string(p));
@@ -667,6 +703,62 @@ void Chatty::command_mcp(const std::vector<std::string>&) {
   }
 }
 
+void Chatty::command_briefs(const std::vector<std::string>& args) {
+  if (args.size() > 2) {
+    std::println("usage: /briefs [name]");
+    return;
+  }
+
+  if (args.size() == 2) {
+    auto it = briefs_.find(args[1]);
+    if (it == briefs_.end()) {
+      std::println("no brief named '{}' (run /briefs to list)", args[1]);
+      return;
+    }
+    mdtty::Renderer md([](std::string_view s) {
+      std::print(stdout, "{}", s);
+      std::fflush(stdout);
+    });
+    md.feed(it->second);
+    md.flush();
+    if (it->second.empty() || it->second.back() != '\n')
+      std::println("");
+    return;
+  }
+
+  if (briefs_.empty()) {
+    std::println("no briefs loaded (drop markdown files into ~/.config/chatty/briefs/)");
+    return;
+  }
+
+  std::vector<std::string> names;
+  names.reserve(briefs_.size());
+  for (const auto& [name, _] : briefs_)
+    names.push_back(name);
+  std::ranges::sort(names);
+
+  constexpr size_t kMaxPreview = 70;
+  for (const auto& name : names) {
+    std::string preview;
+    std::istringstream iss(briefs_.at(name));
+    std::string line;
+    while (std::getline(iss, line)) {
+      while (!line.empty() &&
+             std::isspace(static_cast<unsigned char>(line.back())) != 0)
+        line.pop_back();
+      if (!line.empty()) {
+        preview = std::move(line);
+        break;
+      }
+    }
+    if (preview.size() > kMaxPreview) {
+      preview.resize(kMaxPreview - 3);
+      preview += "...";
+    }
+    std::println("{} — {}", name, preview);
+  }
+}
+
 void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/provider [name]    — switch LLM provider");
   std::println("/model [name]       — switch model");
@@ -676,10 +768,12 @@ void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/new                — start a new session");
   std::println("/resume             — resume a saved session");
   std::println("/delete             — delete current session and start new");
+  std::println("/delete-all         — delete ALL sessions (with confirmation) and start new");
   std::println("/rename <name>      — rename the current session");
   std::println("/auto [on|off]      — auto-approve shell tool calls (toggle)");
   std::println("/reload             — reload environment, providers, briefs, instructions");
   std::println("/mcp                — list connected MCP servers and their tools");
+  std::println("/briefs [name]      — list loaded briefs, or render one by name");
   std::println("/help               — show this help");
   std::println("Ctrl-D              — quit");
 }
