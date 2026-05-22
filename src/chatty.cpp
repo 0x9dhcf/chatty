@@ -77,8 +77,8 @@ void Chatty::reload() {
 
   auto session = agent_.session ? agent_.session : std::make_shared<agt::MemorySession>();
   std::vector<std::shared_ptr<agt::Tool>> tools = {
-      std::make_shared<Shell>(), std::make_shared<Spawn>(), std::make_shared<FileRead>(),
-      std::make_shared<FileWrite>(), std::make_shared<Ask>()};
+      std::make_shared<Shell>(),     std::make_shared<Spawn>(), std::make_shared<FileRead>(),
+      std::make_shared<FileWrite>(), std::make_shared<FileEdit>(), std::make_shared<Ask>()};
   if (const char* k = std::getenv("TAVILY_API_KEY"); k != nullptr && k[0] != '\0') {
     tools.push_back(std::make_shared<WebSearch>());
     tools.push_back(std::make_shared<WebExtract>());

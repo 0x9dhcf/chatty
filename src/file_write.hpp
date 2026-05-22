@@ -9,7 +9,12 @@
 
 class FileWrite : public agt::Tool {
   const char* name() const noexcept override { return "file_write"; }
-  const char* description() const noexcept override { return "write to a file"; }
+  const char* description() const noexcept override {
+    return "Write data to a file on disk. Default overwrites the whole file; "
+           "pass 'pos' to seek and overwrite at a byte offset for surgical "
+           "edits (pair with file_read's 'pos'/'len' to change one section "
+           "without rewriting the rest). Prefer this over shell+heredoc.";
+  }
 
   agt::Json parameters() const override {
     return {{"type", "object"},

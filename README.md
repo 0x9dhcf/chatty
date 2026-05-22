@@ -90,6 +90,7 @@ Sessions are stored as SQLite databases under `~/.local/state/chatty/sessions/`.
 - **spawn**: run a process in the background
 - **file_read**: read file contents (support partial reads)
 - **file_write**: write to a file (supports partial writes)
+- **file_edit**: find-and-replace exact text in an existing file (atomic; fails loudly on ambiguous matches)
 - **ask**: present interactive choices to the user
 - **web_search**: query the web via [Tavily](https://tavily.com) and return a synthesized answer plus top results (registered only when `TAVILY_API_KEY` is set)
 - **web_extract**: fetch one or more URLs via Tavily and return their cleaned content as markdown (registered only when `TAVILY_API_KEY` is set)
