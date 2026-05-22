@@ -3,6 +3,7 @@
 #include "environment.hpp"
 #include "settings.hpp"
 #include "session_manager.hpp"
+#include "tool_context.hpp"
 #include <agt/agent.hpp>
 #include <agt/json.hpp>
 #include <agt/llm.hpp>
@@ -72,6 +73,7 @@ private:
   bool auto_approve_ = false;
   bool compact_prompt_ = false;
   std::optional<ptty::LineEditor> editor_;
+  ChattyToolContext ctx_;
   std::shared_ptr<agt::Llm> llm_;
   agt::Runner runner_;
   agt::Agent agent_;

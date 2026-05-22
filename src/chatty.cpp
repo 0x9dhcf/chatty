@@ -268,6 +268,10 @@ void Chatty::reset_editor() {
     compact_prompt_ = !compact_prompt_;
     editor_->set_prompt(ptty::Prompt(make_prompt()));
   });
+  ctx_.editor = &*editor_;
+  ctx_.refresh_prompt = [this] {
+    if (editor_) editor_->set_prompt(ptty::Prompt(make_prompt()));
+  };
 }
 
 void Chatty::run() noexcept {
@@ -306,7 +310,7 @@ void Chatty::handle_message(const std::string& input) {
 #endif
 
     agt::RunnerOptions opts = {
-        .max_turns = 10, .context = &*editor_, .thinking_effort = settings_.thinking_effort};
+        .max_turns = 10, .context = &ctx_, .thinking_effort = settings_.thinking_effort};
     agt::RunnerHooks hooks = {
         .on_token =
             [&md, &seen_content](const std::string& tok) {
