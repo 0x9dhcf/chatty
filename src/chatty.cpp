@@ -10,15 +10,30 @@
 #include <agt/session.hpp>
 #include <agt/tool.hpp>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <ctime>
 #include <mdtty/mdtty.hpp>
+#include <mutex>
 #include <print>
 #include <ranges>
 #include <sstream>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+// Single live ProcessRegistry pointer for the atexit hook to find. Set in
+// Chatty's ctor, cleared in dtor. The exchange-on-fire pattern prevents
+// double-kill if both the destructor and atexit fire (atexit runs last).
+namespace {
+std::atomic<ProcessRegistry*> g_chatty_registry{nullptr};
+}
+
+extern "C" void chatty_atexit_kill_supervised() noexcept {
+  if (auto* r = g_chatty_registry.exchange(nullptr))
+    r->shutdown_kill_all();
+}
 
 Chatty::Chatty()
     : commands_{
@@ -36,6 +51,7 @@ Chatty::Chatty()
           {"/reload", [this](const std::vector<std::string>& s) { command_reload(s); }},
           {"/mcp", [this](const std::vector<std::string>& s) { command_mcp(s); }},
           {"/briefs", [this](const std::vector<std::string>& s) { command_briefs(s); }},
+          {"/ps", [this](const std::vector<std::string>& s) { command_ps(s); }},
           {"/help", [this](const std::vector<std::string>& s) { command_help(s); }},
       },
       policies_{
@@ -55,6 +71,14 @@ Chatty::Chatty()
              return true;
            }},
       } {
+  g_chatty_registry.store(&registry_, std::memory_order_release);
+  static std::once_flag flag;
+  std::call_once(flag, [] { std::atexit(chatty_atexit_kill_supervised); });
+}
+
+Chatty::~Chatty() {
+  registry_.shutdown_kill_all();
+  g_chatty_registry.store(nullptr, std::memory_order_release);
 }
 
 void Chatty::reload() {
@@ -77,8 +101,11 @@ void Chatty::reload() {
 
   auto session = agent_.session ? agent_.session : std::make_shared<agt::MemorySession>();
   std::vector<std::shared_ptr<agt::Tool>> tools = {
-      std::make_shared<Shell>(),     std::make_shared<Spawn>(), std::make_shared<FileRead>(),
-      std::make_shared<FileWrite>(), std::make_shared<FileEdit>(), std::make_shared<Ask>()};
+      std::make_shared<Shell>(),           std::make_shared<Spawn>(),
+      std::make_shared<SpawnSupervised>(), std::make_shared<ProcessStatus>(),
+      std::make_shared<ProcessKill>(),     std::make_shared<ProcessList>(),
+      std::make_shared<FileRead>(),        std::make_shared<FileWrite>(),
+      std::make_shared<FileEdit>(),        std::make_shared<Ask>()};
   if (const char* k = std::getenv("TAVILY_API_KEY"); k != nullptr && k[0] != '\0') {
     tools.push_back(std::make_shared<WebSearch>());
     tools.push_back(std::make_shared<WebExtract>());
@@ -230,7 +257,7 @@ void Chatty::build_instructions() {
   instructions_ = p.str();
 }
 
-std::string Chatty::make_prompt() const {
+std::string Chatty::make_prompt() {
   std::string p;
   if (!compact_prompt_) {
     p += std::format("\x1b[36m{}\x1b[0m", agt::provider_to_string(settings_.provider));
@@ -244,6 +271,8 @@ std::string Chatty::make_prompt() const {
     // Compact mode still surfaces auto-approve since it has consequences.
     p += std::format("\x1b[1;31mauto\x1b[0m");
   }
+  if (auto n = registry_.live_count(); n > 0)
+    p += std::format(" \x1b[2m\xc2\xb7\x1b[0m \x1b[1;31m{} bg\x1b[0m", n);
   p += std::format(" \x1b[1;35m\xe2\x9d\xaf\x1b[0m "); // bold magenta ❯
   return p;
 }
@@ -269,6 +298,7 @@ void Chatty::reset_editor() {
     editor_->set_prompt(ptty::Prompt(make_prompt()));
   });
   ctx_.editor = &*editor_;
+  ctx_.registry = &registry_;
   ctx_.refresh_prompt = [this] {
     if (editor_) editor_->set_prompt(ptty::Prompt(make_prompt()));
   };
@@ -763,6 +793,30 @@ void Chatty::command_briefs(const std::vector<std::string>& args) {
   }
 }
 
+void Chatty::command_ps(const std::vector<std::string>&) {
+  auto rows = registry_.list();
+  if (rows.empty()) {
+    std::println("no supervised processes (use spawn_supervised to start one)");
+    return;
+  }
+  std::ranges::sort(rows, {}, &ProcessHandle::handle);
+  for (const auto& h : rows) {
+    char isobuf[32]{};
+    auto t = std::chrono::system_clock::to_time_t(h.started_at);
+    std::strftime(isobuf, sizeof(isobuf), "%H:%M:%S", std::localtime(&t));
+    if (h.exit_code) {
+      auto code = *h.exit_code;
+      // dim if 0, red otherwise
+      const char* color = (code == 0) ? "\x1b[2m" : "\x1b[31m";
+      std::println("{}  {}EXITED {}\x1b[0m  {}  started {}",
+                   h.handle, color, code, h.command, isobuf);
+    } else {
+      std::println("{}  \x1b[32mRUNNING\x1b[0m   {}  started {}",
+                   h.handle, h.command, isobuf);
+    }
+  }
+}
+
 void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/provider [name]    — switch LLM provider");
   std::println("/model [name]       — switch model");
@@ -778,6 +832,7 @@ void Chatty::command_help(const std::vector<std::string>&) {
   std::println("/reload             — reload environment, providers, briefs, instructions");
   std::println("/mcp                — list connected MCP servers and their tools");
   std::println("/briefs [name]      — list loaded briefs, or render one by name");
+  std::println("/ps                 — list supervised background processes");
   std::println("/help               — show this help");
   std::println("Ctrl-D              — quit");
 }

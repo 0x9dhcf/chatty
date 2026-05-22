@@ -1,6 +1,7 @@
 #pragma once
 
 #include "environment.hpp"
+#include "process_registry.hpp"
 #include "settings.hpp"
 #include "session_manager.hpp"
 #include "tool_context.hpp"
@@ -25,7 +26,7 @@ class Chatty {
 public:
 
   Chatty();
-  ~Chatty() = default;
+  ~Chatty();
 
   void run() noexcept;
 
@@ -48,13 +49,14 @@ private:
   void command_reload(const std::vector<std::string> &args);
   void command_mcp(const std::vector<std::string> &args);
   void command_briefs(const std::vector<std::string> &args);
+  void command_ps(const std::vector<std::string> &args);
   void command_help(const std::vector<std::string> &args);
 
   void start_new_session();
   void save_session_config();
   void build_instructions();
   void reset_editor();
-  std::string make_prompt() const;
+  std::string make_prompt();
 
   std::string instructions_;
   std::unordered_map<std::string, Command> commands_;
@@ -73,6 +75,7 @@ private:
   bool auto_approve_ = false;
   bool compact_prompt_ = false;
   std::optional<ptty::LineEditor> editor_;
+  ProcessRegistry registry_;
   ChattyToolContext ctx_;
   std::shared_ptr<agt::Llm> llm_;
   agt::Runner runner_;

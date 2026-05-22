@@ -75,6 +75,7 @@ Pass `--version` to print the build version and exit.
 | `/delete`            | Delete current session and start new          |
 | `/mcp`               | List connected MCP servers and their tools    |
 | `/briefs [name]`     | List loaded briefs, or render one by name     |
+| `/ps`                | List supervised background processes          |
 | `/help`              | Show available commands                       |
 | `Ctrl-D`             | Quit                                          |
 
@@ -87,7 +88,11 @@ Sessions are stored as SQLite databases under `~/.local/state/chatty/sessions/`.
 ## Tools
 
 - **shell**: execute a command and return its output
-- **spawn**: run a process in the background
+- **spawn**: launch a process in the background, fire-and-forget (use for GUI apps, editors, browsers — survives chatty exit)
+- **spawn_supervised**: launch a background process with stdout/stderr captured to a log; returns a handle for later inspection (use for dev servers, builds, log followers — killed when chatty exits)
+- **process_status**: get state + tail of a supervised process
+- **process_kill**: send a signal to a supervised process
+- **process_list**: list all supervised processes
 - **file_read**: read file contents (support partial reads)
 - **file_write**: write to a file (supports partial writes)
 - **file_edit**: find-and-replace exact text in an existing file (atomic; fails loudly on ambiguous matches)
