@@ -20,7 +20,7 @@ include(cmake/CPM.cmake)
 CPMAddPackage(
   NAME agt
   GITHUB_REPOSITORY 0x9dhcf/agt
-  GIT_TAG v0.6.4
+  GIT_TAG v0.6.5
   EXCLUDE_FROM_ALL YES
   SYSTEM YES
 )

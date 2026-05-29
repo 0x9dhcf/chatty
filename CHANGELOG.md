@@ -19,4 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Build now requires `libcurl` (used by the web tools).
 
+### Fixed
+- Bumped agt to v0.6.5, which enforces network timeouts on all HTTP
+  requests. A stalled API connection (notably a hung streaming response)
+  used to block the UI thread forever; it now aborts with a
+  `network_error` instead of freezing chatty.
+
 [Unreleased]: https://github.com/0x9dhcf/chatty/compare/HEAD...HEAD
