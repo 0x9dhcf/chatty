@@ -10,7 +10,12 @@
 
 class FileRead : public agt::Tool {
   const char *name() const noexcept override { return "file_read"; }
-  const char *description() const noexcept override { return "read from a file"; }
+  const char *description() const noexcept override {
+    return "Read a file's contents from disk. Supports partial reads via "
+           "'pos' (byte offset to start) and 'len' (max bytes); use both for "
+           "files larger than a few KiB to avoid truncation. Prefer this over "
+           "shell+cat whenever you need to actually read file content.";
+  }
 
   agt::Json parameters() const override {
     return {

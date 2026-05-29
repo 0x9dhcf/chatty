@@ -1,5 +1,6 @@
 #pragma once
 
+#include "tool_context.hpp"
 #include <agt/tool.hpp>
 #include <promptty/promptty.hpp>
 #include <string>
@@ -24,9 +25,10 @@ class Ask : public agt::Tool {
   }
 
   agt::Json execute(const agt::Json& input, void* context = nullptr) override {
-    auto* editor = static_cast<ptty::LineEditor*>(context);
-    if (!editor)
+    auto* ctx = static_cast<ChattyToolContext*>(context);
+    if (!ctx || !ctx->editor)
       return {{"error", "no editor context"}};
+    auto* editor = ctx->editor;
 
     std::vector<std::string> choices;
     for (const auto& c : input["choices"])
